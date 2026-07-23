@@ -1,3 +1,23 @@
+use axum::{
+    extract::{Query, State, Path},
+    response::{Html, IntoResponse, Redirect},
+    routing::{get, post},
+    Router,
+    http::StatusCode,
+};
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use serde::Deserialize;
+use std::fs;
+use std::net::SocketAddr;
+use std::path::{Path as StdPath, PathBuf};
+use std::sync::Arc;
+use std::time::SystemTime;
+use tokio::sync::RwLock;
+use tower_http::services::ServeDir;
+use tower_http::catch_panic::CatchPanicLayer;
+use local_ip_address::local_ip;
+
+// Embed the HTML & JS template at compile time
 const INDEX_HTML_TEMPLATE: &str = include_str!("index.html");
 
 /// Represents the supported video containers/formats
