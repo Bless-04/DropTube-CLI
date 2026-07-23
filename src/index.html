@@ -56,11 +56,22 @@
 
         <!-- Navigation Actions -->
         <div class="flex items-center gap-3">
+            <button 
+                onclick="refreshIndex(this)" 
+                class="inline-flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 active:scale-95 text-zinc-300 font-medium px-4 py-1.5 rounded-full transition-all text-xs"
+                title="Force-rescan directories in background"
+            >
+                <svg id="refresh-icon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M9 11l3 3L21 3"/>
+                </svg>
+                <span id="refresh-text" class="hidden sm:inline">Refresh Index</span>
+            </button>
             <a href="/explorer" class="inline-flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 active:scale-95 text-zinc-300 font-medium px-4 py-1.5 rounded-full transition-all text-xs">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
-                Explorer Mode
+                <span class="hidden sm:inline">Explorer Mode</span>
+                <span class="sm:hidden">Explorer</span>
             </a>
-            <div class="hidden md:flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-full px-3.5 py-1.5 text-xs text-zinc-400 font-medium">
+            <div class="hidden lg:flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-full px-3.5 py-1.5 text-xs text-zinc-400 font-medium">
                 <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                 LAN: {{LOCAL_IP}}:{{PORT}}
             </div>
@@ -165,6 +176,37 @@
                     card.style.display = 'none';
                 }
             });
+        }
+
+        // Trigger manual background index scan
+        function refreshIndex(btn) {
+            const icon = document.getElementById('refresh-icon');
+            const text = document.getElementById('refresh-text');
+            
+            icon.classList.add('animate-spin');
+            if (text) text.textContent = 'Syncing...';
+            btn.disabled = true;
+            
+            fetch('/refresh', { method: 'POST' })
+                .then(response => {
+                    if (response.ok) {
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 800);
+                    } else {
+                        alert('Failed to refresh index.');
+                        icon.classList.remove('animate-spin');
+                        if (text) text.textContent = 'Refresh Index';
+                        btn.disabled = false;
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert('Network error while refreshing index.');
+                    icon.classList.remove('animate-spin');
+                    if (text) text.textContent = 'Refresh Index';
+                    btn.disabled = false;
+                });
         }
     </script>
 </body>
