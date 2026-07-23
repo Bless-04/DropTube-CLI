@@ -36,6 +36,8 @@ impl VideoFormat {
     }
 }
 
+/// Represents the rating of a video (Unrated or 1-5 stars)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Rating {
     Unrated,
     OneStar,
