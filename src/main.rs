@@ -17,7 +17,7 @@ use std::time::SystemTime;
 use tokio::sync::RwLock;
 use tower_http::services::ServeDir;
 use tower_http::catch_panic::CatchPanicLayer;
-use local_ip_address::local_ip;
+use tower_http::services::ServeDir;
 
 // Embed the HTML & JS template at compile time
 const INDEX_HTML_TEMPLATE: &str = include_str!("ui/index.html");
