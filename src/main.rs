@@ -15,6 +15,7 @@ enum Rating {
     ThreeStars,
     FourStars,
     FiveStars,
+}
     // Validate directory
     if !movie_directory.exists() {
         eprintln!("\x1b[1;31mError:\x1b[0m Directory '{}' does not exist.", raw_dir);
