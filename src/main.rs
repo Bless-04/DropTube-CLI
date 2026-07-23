@@ -2,6 +2,7 @@ fn main() {
     println!("Hello, world!");
 
 /// Represents the supported video containers/formats
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VideoFormat {
     Mp4,
     Mkv,
@@ -114,6 +115,15 @@ impl Tag {
             Self::Other(s) => s,
         }
     }
+}
+
+/// Strongly typed command-line arguments
+#[derive(Debug, PartialEq, Eq)]
+enum CliFlag {
+    NoRecurse,
+    Port(u16),
+    Path(PathBuf),
+}
 struct HomeQuery {
     v: Option<String>,
 }
