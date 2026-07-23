@@ -145,6 +145,8 @@ struct HomeQuery {
 struct AppState {
     movie_directory: PathBuf,
     port: u16,
+    recurse: bool,
+}
 }
     // Validate directory
     if !movie_directory.exists() {
