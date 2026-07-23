@@ -1,5 +1,3 @@
-fn main() {
-    println!("Hello, world!");
 
 /// Represents the supported video containers/formats
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
