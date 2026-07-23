@@ -1,10 +1,12 @@
 use axum::{
-    extract::{Query, State, Path},
+    extract::{Path, Query, State},
+    http::StatusCode,
     response::{Html, IntoResponse, Redirect},
     routing::{get, post},
     Router,
     http::StatusCode,
 };
+use local_ip_address::local_ip;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use serde::Deserialize;
 use std::fs;
