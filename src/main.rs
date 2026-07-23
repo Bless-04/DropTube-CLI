@@ -185,4 +185,8 @@ struct AppState {
     println!("🚀 Local Access      : \x1b[1;35mhttp://localhost:{}\x1b[0m", port);
     println!("📱 Mobile Stream LAN : \x1b[1;35mhttp://{}:{}\x1b[0m", local_ip_addr, port);
     println!("\x1b[1;36m============================================================\x1b[0m");
+
+    // Spawning background worker task to re-scan the directory in background
+    let cache_clone = index_cache.clone();
+    let dir_clone = canonical_dir.clone();
 }
