@@ -1,5 +1,7 @@
 fn main() {
     println!("Hello, world!");
+
+/// Represents the supported video containers/formats
 enum VideoFormat {
     Mp4,
     Mkv,
