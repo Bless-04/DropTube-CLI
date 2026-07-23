@@ -124,6 +124,20 @@ enum CliFlag {
     Port(u16),
     Path(PathBuf),
 }
+
+#[derive(Debug, Clone)]
+struct VideoFile {
+    file_name: String,
+    display_name: String,
+    file_size_mb: u64,
+    unix_timestamp: u64,
+    format: VideoFormat,
+    rating: Rating,
+    tags: Vec<Tag>,
+    thumbnail_path: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct HomeQuery {
     v: Option<String>,
 }
