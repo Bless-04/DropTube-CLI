@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-[#0f0f0f]">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DropTube - Seamless LAN Media Streaming</title>
+    <script src="https://tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+        }
+        /* Custom scrollbar styling */
+        .scrollbar-thin::-webkit-scrollbar {
+            height: 5px;
+            width: 6px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-track {
+            background: #181818;
+            border-radius: 10px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+            background: #3f3f46;
+            border-radius: 10px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+            background: #52525b;
+        }
+    </style>
+</head>
+<body class="bg-[#0f0f0f] text-white antialiased selection:bg-red-600 selection:text-white min-h-screen flex flex-col">
+    <!-- Header -->
+    <header class="sticky top-0 z-50 bg-[#0f0f0f]/90 backdrop-blur-md border-b border-zinc-900 px-4 py-3 flex items-center justify-between">
+        <a href="/" class="flex items-center gap-2 select-none group">
+            <span class="bg-red-600 group-hover:bg-red-700 transition-colors text-white px-2.5 py-1 rounded-xl text-sm font-extrabold tracking-tighter flex items-center gap-1 shadow-lg shadow-red-650/10">
+                🎬 RUST
+            </span>
+            <span class="text-white text-lg font-bold tracking-tight">DropTube</span>
+        </a>
+
+        <!-- Client-Side Search Bar -->
+        <div class="relative max-w-xs md:max-w-md w-full mx-4 flex items-center">
+            <div class="absolute left-3.5 text-zinc-500 pointer-events-none">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            </div>
+            <input 
+                type="text" 
+                id="search" 
+                placeholder="Search videos..." 
+                class="w-full bg-[#181818] border border-zinc-800 text-zinc-200 placeholder-zinc-500 pl-10 pr-4 py-1.5 rounded-full text-xs md:text-sm focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all"
+                oninput="filterVideos()"
+            />
+        </div>
+
+        <!-- Navigation Actions -->
+        <div class="flex items-center gap-3">
+            <a href="/explorer" class="inline-flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 active:scale-95 text-zinc-300 font-medium px-4 py-1.5 rounded-full transition-all text-xs">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                Explorer Mode
+            </a>
+            <div class="hidden md:flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-full px-3.5 py-1.5 text-xs text-zinc-400 font-medium">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                LAN: {{LOCAL_IP}}:{{PORT}}
+            </div>
+        </div>
+    </header>
+
+    <!-- Horizontal Category Filter Tags -->
+    <div class="bg-[#0f0f0f] border-b border-zinc-900 py-3 px-4 flex gap-2 overflow-x-auto scrollbar-thin max-w-7xl mx-auto w-full select-none">
+        <button 
+            onclick="filterByTag('all', this)" 
+            class="tag-btn bg-red-600 text-white font-semibold text-xs px-4 py-1.5 rounded-full active:scale-95 transition-all flex-shrink-0"
+        >
+            All
+        </button>
+        {{TAG_FILTERS}}
+    </div>
+
+    <!-- Main Workspace -->
+    <main class="flex-grow">
+        {{CONTENT}}
+    </main>
+
+    <!-- Sticky Bottom Info Bar for Mobile -->
+    <div class="md:hidden sticky bottom-0 left-0 right-0 bg-[#121212]/95 backdrop-blur border-t border-zinc-850 px-4 py-2 text-center text-[10px] text-zinc-400 z-40">
+        Streaming from Host IP: <span class="text-zinc-200 font-semibold">{{LOCAL_IP}}:{{PORT}}</span>
+    </div>
+
+    <!-- Footer -->
+    <footer class="border-t border-zinc-950 bg-[#090909] py-6 px-4 text-center text-xs text-zinc-600 mt-auto">
+        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p>© 2026 DropTube Media Server</p>
+            <p class="flex items-center gap-2">
+                <span class="bg-zinc-900 border border-zinc-850 px-2 py-0.5 rounded text-[10px] text-zinc-500">Stateless</span>
+                <span class="bg-zinc-900 border border-zinc-850 px-2 py-0.5 rounded text-[10px] text-zinc-500">Enums & Sidecars</span>
+                <span class="bg-zinc-900 border border-zinc-850 px-2 py-0.5 rounded text-[10px] text-zinc-500">HTTP 206 Ranges</span>
+                <span class="bg-zinc-900 border border-zinc-850 px-2 py-0.5 rounded text-[10px] text-zinc-500">Zero-Copy Tokio</span>
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        // Active tag filter tracking
+        let activeTag = 'all';
+
+        // Dynamic relative time calculator
+        function getRelativeTime(timestamp) {
+            const now = Math.floor(Date.now() / 1000);
+            const diff = now - timestamp;
+            if (diff < 0) return 'Just now';
+            if (diff < 60) return 'Just now';
+            const mins = Math.floor(diff / 60);
+            if (mins < 60) return mins + 'm ago';
+            const hours = Math.floor(mins / 60);
+            if (hours < 24) return hours + 'h ago';
+            const days = Math.floor(hours / 24);
+            if (days < 30) return days + 'd ago';
+            const months = Math.floor(days / 30);
+            return months + 'mo ago';
+        }
+
+        document.querySelectorAll('.time-elapsed').forEach(el => {
+            const timestamp = parseInt(el.getAttribute('data-timestamp'));
+            if (!isNaN(timestamp)) {
+                el.textContent = getRelativeTime(timestamp);
+            }
+        });
+
+        // Tag filter action
+        function filterByTag(tag, element) {
+            activeTag = tag;
+            
+            // Reset and update tag button states
+            document.querySelectorAll('.tag-btn').forEach(btn => {
+                btn.classList.remove('bg-red-600', 'text-white', 'font-semibold');
+                btn.classList.add('bg-zinc-800', 'text-zinc-300', 'font-normal');
+            });
+            
+            if (element) {
+                element.classList.remove('bg-zinc-800', 'text-zinc-300', 'font-normal');
+                element.classList.add('bg-red-600', 'text-white', 'font-semibold');
+            }
+            
+            filterVideos();
+        }
+
+        // Search & Tag composite filter
+        function filterVideos() {
+            const query = document.getElementById('search').value.toLowerCase().trim();
+            const cards = document.querySelectorAll('.video-card');
+            
+            cards.forEach(card => {
+                const title = card.getAttribute('data-title').toLowerCase();
+                const tagsRaw = card.getAttribute('data-tags') || '';
+                const tags = tagsRaw.toLowerCase().split(',').map(t => t.trim());
+                
+                const matchesQuery = title.includes(query);
+                const matchesTag = activeTag === 'all' || tags.includes(activeTag.toLowerCase());
+                
+                if (matchesQuery && matchesTag) {
+                    card.style.display = '';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+    </script>
+</body>
+</html>
