@@ -1,3 +1,4 @@
+const INDEX_HTML_TEMPLATE: &str = include_str!("index.html");
 
 /// Represents the supported video containers/formats
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
