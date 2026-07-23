@@ -177,4 +177,12 @@ struct AppState {
         eprintln!("\x1b[1;31mError:\x1b[0m '{}' is not a directory.", movie_directory.display());
         std::process::exit(1);
     }
+    println!("\x1b[1;36m============================================================\x1b[0m");
+    println!("🎬 \x1b[1;32mDropTube\x1b[0m - High-Performance Rust Media Server");
+    println!("\x1b[1;36m============================================================\x1b[0m");
+    println!("📂 Serving Directory : \x1b[1;34m{}\x1b[0m", canonical_dir.display());
+    println!("⚙️  Scanning Mode     : \x1b[1;33m{}\x1b[0m", if recurse { "Recursive" } else { "Immediate Directory Only" });
+    println!("🚀 Local Access      : \x1b[1;35mhttp://localhost:{}\x1b[0m", port);
+    println!("📱 Mobile Stream LAN : \x1b[1;35mhttp://{}:{}\x1b[0m", local_ip_addr, port);
+    println!("\x1b[1;36m============================================================\x1b[0m");
 }
