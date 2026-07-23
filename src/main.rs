@@ -110,6 +110,10 @@ impl Tag {
             Self::Other(s) => s,
         }
     }
+struct HomeQuery {
+    v: Option<String>,
+}
+
 #[derive(Clone)]
 struct AppState {
     movie_directory: PathBuf,
