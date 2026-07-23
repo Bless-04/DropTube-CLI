@@ -8,6 +8,32 @@ enum VideoFormat {
     Avi,
     M4v,
 }
+
+impl VideoFormat {
+    fn from_ext(ext: &str) -> Option<Self> {
+        match ext.to_lowercase().as_str() {
+            "mp4" => Some(Self::Mp4),
+            "mkv" => Some(Self::Mkv),
+            "webm" => Some(Self::Webm),
+            "mov" => Some(Self::Mov),
+            "avi" => Some(Self::Avi),
+            "m4v" => Some(Self::M4v),
+            _ => None,
+        }
+    }
+
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Mp4 => "mp4",
+            Self::Mkv => "mkv",
+            Self::Webm => "webm",
+            Self::Mov => "mov",
+            Self::Avi => "avi",
+            Self::M4v => "m4v",
+        }
+    }
+}
+
 enum Rating {
     Unrated,
     OneStar,
