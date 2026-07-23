@@ -18,7 +18,7 @@ use tower_http::catch_panic::CatchPanicLayer;
 use local_ip_address::local_ip;
 
 // Embed the HTML & JS template at compile time
-const INDEX_HTML_TEMPLATE: &str = include_str!("index.html");
+const INDEX_HTML_TEMPLATE: &str = include_str!("ui/index.html");
 
 /// Represents the supported video containers/formats
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
