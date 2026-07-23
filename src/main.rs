@@ -71,6 +71,45 @@ impl Rating {
     }
 }
 
+/// Represents categories/topics tags for video grouping
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+enum Tag {
+    Action,
+    Comedy,
+    Drama,
+    SciFi,
+    Documentary,
+    Technology,
+    Rust,
+    Other(String),
+}
+
+impl Tag {
+    fn from_str(s: &str) -> Self {
+        match s.to_lowercase().trim() {
+            "action" => Self::Action,
+            "comedy" => Self::Comedy,
+            "drama" => Self::Drama,
+            "sci-fi" | "scifi" => Self::SciFi,
+            "documentary" => Self::Documentary,
+            "technology" | "tech" => Self::Technology,
+            "rust" => Self::Rust,
+            other => Self::Other(other.to_string()),
+        }
+    }
+
+    fn as_str(&self) -> &str {
+        match self {
+            Self::Action => "Action",
+            Self::Comedy => "Comedy",
+            Self::Drama => "Drama",
+            Self::SciFi => "Sci-Fi",
+            Self::Documentary => "Documentary",
+            Self::Technology => "Technology",
+            Self::Rust => "Rust",
+            Self::Other(s) => s,
+        }
+    }
     // Validate directory
     if !movie_directory.exists() {
         eprintln!("\x1b[1;31mError:\x1b[0m Directory '{}' does not exist.", raw_dir);
