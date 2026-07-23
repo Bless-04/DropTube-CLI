@@ -166,6 +166,7 @@ struct AppState {
     movie_directory: PathBuf,
     port: u16,
     recurse: bool,
+    index_cache: Arc<RwLock<Vec<VideoFile>>>,
 }
 }
     // Validate directory
