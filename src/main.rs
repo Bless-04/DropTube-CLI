@@ -138,14 +138,6 @@ impl Tag {
     }
 }
 
-/// Strongly typed command-line arguments
-#[derive(Debug, PartialEq, Eq)]
-enum CliFlag {
-    NoRecurse,
-    Port(u16),
-    Path(PathBuf),
-}
-
 #[derive(Debug, Clone)]
 struct VideoFile {
     file_name: String,
