@@ -22,7 +22,7 @@ pub mod ui;
 pub mod routes;
 
 // Embed the HTML & JS template at compile time
-const INDEX_HTML_TEMPLATE: &str = include_str!("website/index.html");
+const INDEX_HTML_TEMPLATE: &str = include_str!("../public/index.html");
 
 /// Represents the supported video containers/formats
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
