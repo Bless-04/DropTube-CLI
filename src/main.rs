@@ -87,7 +87,7 @@ impl Rating {
 
     fn as_stars(&self) -> &'static str {
         match self {
-            Self::Unrated => "★☆☆☆☆",
+            Self::Unrated => "☆☆☆☆☆",
             Self::OneStar => "★☆☆☆☆",
             Self::TwoStars => "★★☆☆☆",
             Self::ThreeStars => "★★★☆☆",
