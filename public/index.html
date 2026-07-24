@@ -6,15 +6,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DropTube - Seamless LAN Media Streaming</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preload" href="./index.css" as="style">
-    <link rel="stylesheet" href="./index.css">
+    <link rel="preload" href="index.css" as="style">
+    <link rel="stylesheet" href="index.css">
 </head>
 
 <body class="bg-[#0f0f0f] text-white antialiased selection:bg-red-600 selection:text-white min-h-screen flex flex-col">
     <!-- Header -->
     <header
         class="sticky top-0 z-50 bg-[#0f0f0f]/90 backdrop-blur-md border-b border-zinc-900 px-4 py-3 flex items-center justify-between">
-        <a href="/" class="flex items-center gap-2 select-none group">
+        <a href="/public" class="flex items-center gap-2 select-none group">
             <span
                 class="bg-red-600 group-hover:bg-red-700 transition-colors text-white px-2.5 py-1 rounded-xl text-sm font-extrabold tracking-tighter flex items-center gap-1 shadow-lg shadow-red-600/10">
                 🎬 RUST
@@ -30,9 +30,9 @@
                         d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
             </div>
-            <input type="text" id="search" placeholder="Search videos..."
-                class="w-full bg-[#181818] border border-zinc-800 text-zinc-200 placeholder-zinc-500 pl-10 pr-4 py-1.5 rounded-full text-xs md:text-sm focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all"
-                oninput="filterVideos()" />
+            <label for="search"></label><input type="text" id="search" placeholder="Search videos..."
+                                               class="w-full bg-[#181818] border border-zinc-800 text-zinc-200 placeholder-zinc-500 pl-10 pr-4 py-1.5 rounded-full text-xs md:text-sm focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all"
+                                               oninput="filterVideos()" />
         </div>
 
         <!-- Navigation Actions -->
@@ -101,7 +101,7 @@
         </div>
     </footer>
 
-    <script src="./index.js"></script>
+    <script src="index.js"></script>
 </body>
 
 </html>
