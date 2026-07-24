@@ -8,3 +8,4 @@ droptube.exe C:\Users\YourName\Movies
 # macOS / Linux
 ./droptube /path/to/your/movies
 ```
+* **Language:** Rust (2024 Edition)
