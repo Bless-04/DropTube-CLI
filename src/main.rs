@@ -18,6 +18,10 @@ use tokio::sync::RwLock;
 use tower_http::services::ServeDir;
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::services::ServeDir;
+use config::cli_flag::CliFlag;
+use ui::tailwind;
+pub mod config;
+pub mod ui;
 
 // Embed the HTML & JS template at compile time
 const INDEX_HTML_TEMPLATE: &str = include_str!("ui/index.html");
