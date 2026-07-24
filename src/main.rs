@@ -1,29 +1,16 @@
-use axum::{
-    extract::{Path, Query, State},
-    http::StatusCode,
-    response::{Html, IntoResponse, Redirect},
-    routing::{get, post},
-    Router,
-    http::StatusCode,
-};
+use axum::Router;
+use droptube::config::logger::create_log;
+use droptube::models::flags::CliFlag;
+use droptube::models::state::AppState;
+use droptube::server::create_router;
+use droptube::utils::scanner::scan_directory;
 use local_ip_address::local_ip;
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
-use serde::Deserialize;
-use std::fs;
+use log::{Level, error, info};
 use std::net::SocketAddr;
-use std::path::{Path as StdPath, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::RwLock;
-use ui::tailwind;
-
-pub mod config;
-pub mod ui;
-pub mod routes;
-
-// Embed the HTML & JS template at compile time
-const INDEX_HTML_TEMPLATE: &str = include_str!("../public/index.html");
-
 
 async fn shutdown_signal() {
     let ctrl_c = async {
