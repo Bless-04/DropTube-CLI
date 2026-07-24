@@ -15,6 +15,6 @@ pub(crate) fn create_router(state: AppState) -> Router {
         .nest_service("/video", ServeDir::new(&state.movie_directory))
         .layer(CatchPanicLayer::new()) // Catch requests panic to keep daemon running
         .with_state(state);
-    info!("Routes Loaded");
+    info!("All Routes Loaded");
     router
 }
