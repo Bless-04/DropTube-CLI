@@ -168,11 +168,11 @@ struct AppState {
     create_log(Level::Info).expect("Failed To Attach Logger");
     // Validate directory
     if !movie_directory.exists() {
-        eprintln!("\x1b[1;31mError:\x1b[0m Directory '{}' does not exist.", movie_directory.display());
+        error!("Directory '{}' does not exist.", movie_directory.display());
         std::process::exit(1);
     }
     if !movie_directory.is_dir() {
-        eprintln!("\x1b[1;31mError:\x1b[0m '{}' is not a directory.", movie_directory.display());
+        error!("'{}' is not a directory.", movie_directory.display());
         std::process::exit(1);
     }
     println!("\x1b[1;36m============================================================\x1b[0m");
