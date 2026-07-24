@@ -10,7 +10,7 @@ pub(crate) fn create_router(state: AppState) -> Router {
         .nest_service("/public", ServeDir::new("public"))
         .route("/refresh", post(refresh_index_handler))
         .route("/explorer", get(explorer_root_handler))
-        .route("/explorer/*path", get(explorer_path_handler))
+        .route("/explorer/{*path}", get(explorer_path_handler))
         .nest_service("/video", ServeDir::new(&state.movie_directory))
         .layer(CatchPanicLayer::new()) // Catch requests panic to keep daemon running
         .with_state(state)
