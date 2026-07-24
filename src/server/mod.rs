@@ -1,11 +1,15 @@
+pub mod handlers;
+
 use axum::Router;
 use axum::routing::{get, post};
 use log::info;
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::services::ServeDir;
-use crate::{explorer_path_handler, explorer_root_handler, home_page_handler, refresh_index_handler, AppState};
 
-pub(crate) fn create_router(state: AppState) -> Router {
+use crate::models::state::AppState;
+use handlers::{home_page_handler, explorer_root_handler, explorer_path_handler, refresh_index_handler};
+
+pub fn create_router(state: AppState) -> Router {
     let router = Router::new()
         .route("/", get(home_page_handler))
         .nest_service("/public", ServeDir::new("public"))
