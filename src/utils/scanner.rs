@@ -13,6 +13,14 @@ pub fn parse_video_info(path: &StdPath) -> (String, Rating, Vec<Tag>) {
             }
         }
     }
+/// Recursively or non-recursively scans directory for supported video files
+pub fn scan_directory(
+    dir: &StdPath,
+    base_dir: &StdPath,
+    recurse: bool,
+    videos: &mut Vec<VideoFile>,
+    count: &mut usize,
+) {
     } else {
         warn!(
             "Failed to read contents of directory: {}",
