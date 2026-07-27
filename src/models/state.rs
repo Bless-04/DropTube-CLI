@@ -5,10 +5,10 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 #[derive(Clone)]
-pub struct AppState {
+pub struct AppState { //todo this should just have a Cli Args field
     pub movie_directory: PathBuf,
     pub port: u16,
-    pub recurse: bool,
+    pub recurse: bool, 
     pub index_cache: Arc<RwLock<Vec<VideoFile>>>,
 }
 
