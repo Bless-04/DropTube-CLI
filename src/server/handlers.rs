@@ -20,6 +20,8 @@ pub async fn refresh_index_handler(State(state): State<AppState>) -> StatusCode 
     let dir = state.movie_directory.clone();
     let recurse = state.recurse;
     let cache_clone = state.index_cache.clone();
+/// Handles homepage requests. Lists video files in the served directory.
+/// Renders a dynamic player if the query param `v` is set.
 pub async fn home_page_handler(
     Html(full_html)
 }
