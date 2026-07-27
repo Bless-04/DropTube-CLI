@@ -13,4 +13,10 @@ pub fn parse_video_info(path: &StdPath) -> (String, Rating, Vec<Tag>) {
             }
         }
     }
+    } else {
+        warn!(
+            "Failed to read contents of directory: {}",
+            dir.display()
+        );
+    }
 }
