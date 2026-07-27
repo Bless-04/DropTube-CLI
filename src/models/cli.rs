@@ -9,19 +9,6 @@ pub enum CliFlag {
     Path(PathBuf),
 }
 
-#[derive(Parser, Debug)]
-struct CliArgs {
-    #[arg(short, default_value_t = false)]
-    pub recursive: bool,
-
-    /// port to listen on
-    #[arg(default_value_t = 8081)]
-    pub port: u16,
-
-    #[arg(default_value = "./")]
-    pub path: PathBuf,
-}
-
 impl CliFlag {
     /// Parse arguments into strongly typed CliFlags
     pub fn parse_args(args: &[String]) -> Result<Vec<CliFlag>, String> {
@@ -56,6 +43,21 @@ impl CliFlag {
     }
 }
 
+#[derive(Parser, Debug)]
+#[command(arg_required_else_help = true)]
+pub struct CliArgs {
+    /// Set to true if you want to look through subdirectories as well as the current directory
+    #[arg(short, default_value_t = false)]
+    pub recursive: bool,
+
+    /// port to listen on
+    #[arg(default_value_t = 8081)]
+    pub port: u16,
+
+    /// root path for files
+    #[arg(default_value = "./")]
+    pub path: PathBuf,
+}
 #[cfg(test)]
 mod tests {
     const EXE_NAME: &str = "droptube";
@@ -73,7 +75,7 @@ mod tests {
         assert!(args_result.is_ok());
         let args = args_result.unwrap();
 
-        assert_eq!(args.port, 8080);
+        assert_eq!(args.port, 8081);
         assert_eq!(args.path, PathBuf::from("./test"));
         assert_eq!(args.recursive, false);
     }
