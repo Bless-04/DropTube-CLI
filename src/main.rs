@@ -1,12 +1,15 @@
 use axum::Router;
+use clap::Parser;
 use droptube::config::constants::DEFAULT_PORT;
 use droptube::config::logger::create_log;
-use droptube::models::cli::CliFlag;
+use droptube::models::cli::{CliArgs, CliFlag};
 use droptube::models::state::AppState;
 use droptube::server::create_router;
+use droptube::utils::display;
 use droptube::utils::scanner::scan_directory;
 use local_ip_address::local_ip;
-use log::{Level, error, info};
+use log::{Level, error, info, warn};
+use std::io::Write;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -64,6 +67,7 @@ async fn main() {
 
     // 2. CLI Argument Parsing
     let args: Vec<String> = std::env::args().collect();
+    //let args = CliArgs::parse();
     let parsed_flags = match CliFlag::parse_args(&args) {
         Ok(f) => f,
         Err(e) => {
@@ -158,10 +162,7 @@ async fn main() {
                     if e.kind() == std::io::ErrorKind::AddrInUse {
                         active_port += 1;
                     } else {
-                        eprintln!(
-                            "\x1b[1;31mError binding to port {}:\x1b[0m {}",
-                            active_port, e
-                        );
+                        error!("Failed to bind to port {}: {}", active_port, e);
                         std::process::exit(1);
                     }
                 }
@@ -170,29 +171,12 @@ async fn main() {
     };
 
     println!("\x1b[1;36m============================================================\x1b[0m");
-    println!("🎬 \x1b[1;32mDropTube\x1b[0m - High-Performance Rust Media Server");
+    println!("🎬 \x1b[1;32mDropTube\x1b[0m - Local Media Server");
     println!("\x1b[1;36m============================================================\x1b[0m");
-    println!(
-        "📂 Serving Directory : \x1b[1;34m{}\x1b[0m",
-        canonical_dir.display()
-    );
-    println!(
-        "⚙️  Scanning Mode     : \x1b[1;33m{}\x1b[0m",
-        if recurse {
-            "Recursive"
-        } else {
-            "Immediate Directory Only"
-        }
-    );
+    display::serving_dir(canonical_dir.display());
+    display::scanning_mode(recurse);
 
-    println!(
-        "🚀 Local Access      : \x1b[1;35mhttp://localhost:{}\x1b[0m",
-        port
-    );
-    println!(
-        "📱 Mobile Stream LAN : \x1b[1;35mhttp://{}:{}\x1b[0m",
-        local_ip_addr, port
-    );
+    display::local_urls(local_ip_addr, port);
     println!("\x1b[1;36m============================================================\x1b[0m");
 
     // Spawning background worker task to re-scan the directory in background
