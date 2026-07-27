@@ -1,3 +1,3 @@
-pub mod flags;
+pub mod cli;
 pub mod state;
 pub mod video;

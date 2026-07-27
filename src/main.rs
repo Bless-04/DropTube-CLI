@@ -1,7 +1,7 @@
 use axum::Router;
 use droptube::config::constants::DEFAULT_PORT;
 use droptube::config::logger::create_log;
-use droptube::models::flags::CliFlag;
+use droptube::models::cli::CliFlag;
 use droptube::models::state::AppState;
 use droptube::server::create_router;
 use droptube::utils::scanner::scan_directory;
