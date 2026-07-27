@@ -23,5 +23,9 @@ pub async fn refresh_index_handler(State(state): State<AppState>) -> StatusCode 
 /// Handles homepage requests. Lists video files in the served directory.
 /// Renders a dynamic player if the query param `v` is set.
 pub async fn home_page_handler(
+    State(state): State<AppState>,
+    Query(query): Query<HomeQuery>,
+) -> Html<String> {
+    let port = state.port;
     Html(full_html)
 }
