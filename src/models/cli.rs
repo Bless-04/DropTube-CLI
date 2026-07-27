@@ -60,7 +60,8 @@ pub struct CliArgs {
 }
 #[cfg(test)]
 mod tests {
-    const EXE_NAME: &str = "droptube";
+    /// Name of the executable
+    const EXECUTABLE: &str = "droptube";
     use super::*;
     use clap::CommandFactory;
 
