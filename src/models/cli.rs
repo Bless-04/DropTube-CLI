@@ -1,7 +1,6 @@
 use clap::Parser;
 use std::path::PathBuf;
 
-//todo use clap for this
 /// Strongly typed config-line arguments
 #[derive(Debug, PartialEq, Eq)]
 pub enum CliFlag {
@@ -59,7 +58,7 @@ impl CliFlag {
 
 #[cfg(test)]
 mod tests {
-    const EXE_NAME: &str = "droptube"; 
+    const EXE_NAME: &str = "droptube";
     use super::*;
     use clap::CommandFactory;
 
@@ -73,7 +72,7 @@ mod tests {
         let args_result = CliArgs::try_parse_from([EXE_NAME, "./test"]);
         assert!(args_result.is_ok());
         let args = args_result.unwrap();
-        
+
         assert_eq!(args.port, 8080);
         assert_eq!(args.path, PathBuf::from("./test"));
         assert_eq!(args.recursive, false);
