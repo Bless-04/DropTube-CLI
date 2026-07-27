@@ -20,4 +20,8 @@ droptube.exe C:\Users\YourName\Movies
 # macOS / Linux
 ./droptube /path/to/your/movies
 ```
+
+If no directory argument is passed, DropTube safely defaults to serving your current active terminal directory (`.`).
+
+---
 * **Language:** Rust (2024 Edition)
