@@ -1,4 +1,18 @@
-pub fn parse_video_info(path: &StdPath) -> (String, Rating, Vec<Tag>) {
+use crate::models::cli::CliArgs;
+use crate::models::video::{Rating, Tag, VideoFile, VideoFormat};
+use log::warn;
+use serde::Deserialize;
+use std::fs;
+use std::path::Path as StdPath;
+use std::time::SystemTime;
+
+pub struct ParsedVideoInfo {
+    display_name: String,
+    rating: Rating,
+    tags: Vec<Tag>,
+}
+/// Helper function to parse video meta attributes (Rating, Tags) from sidecars or filename formatting
+pub fn parse_video_info(path: &StdPath) -> ParsedVideoInfo {
     let stem = path
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
