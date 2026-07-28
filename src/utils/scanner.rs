@@ -25,7 +25,7 @@ pub fn scan_directory(
         for entry in entries.flatten() {
             let path = entry.path();
             if recurse && path.is_dir() {
-                scan_directory(&path, base_dir, Some, videos, count);
+                scan_directory(&path, base_dir, recurse, videos, count);
             } else if path.is_file() {
                 *count += 1;
 
@@ -91,7 +91,6 @@ pub fn scan_directory(
             }
         }
     } else {
-        );
         warn!("Failed to read contents of directory: {}", dir.display());
     }
 }
