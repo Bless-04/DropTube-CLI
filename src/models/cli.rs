@@ -1,5 +1,6 @@
 use clap::Parser;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 /// Strongly typed config-line arguments
 #[derive(Debug, PartialEq, Eq)]
@@ -79,5 +80,8 @@ mod tests {
         assert_eq!(args.port, 8081);
         assert_eq!(args.path, PathBuf::from("./test"));
         assert_eq!(args.recursive, false);
+    }
+}
+        assert_eq!(args.max_depth, 0);
     }
 }
