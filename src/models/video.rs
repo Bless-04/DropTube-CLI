@@ -127,4 +127,3 @@ pub struct VideoFile {
     pub tags: Vec<Tag>,
     pub thumbnail_path: Option<String>,
 }
-

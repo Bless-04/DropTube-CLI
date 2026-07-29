@@ -16,16 +16,18 @@ pub fn get_gradient_class(name: &str) -> &'static str {
     gradients[(hash as usize) % gradients.len()]
 }
 
-/// Helper to return colorful classes for tag badges (standard Tailwind classes only)
-pub fn get_tag_badge_class(tag: &Tag) -> &'static str {
-    match tag {
-        Tag::Rust => "bg-orange-500/15 text-orange-400 border border-orange-500/20",
-        Tag::Technology => "bg-blue-500/15 text-blue-400 border border-blue-500/20",
-        Tag::Action => "bg-red-500/15 text-red-400 border border-red-500/20",
-        Tag::SciFi => "bg-purple-500/15 text-purple-400 border border-purple-500/20",
-        Tag::Comedy => "bg-yellow-500/15 text-yellow-500 border border-yellow-500/20",
-        Tag::Drama => "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20",
-        Tag::Documentary => "bg-teal-500/15 text-teal-400 border border-teal-500/20",
-        Tag::Other(_) => "bg-zinc-800/60 text-zinc-400 border border-zinc-700/40",
+impl Tag {
+    /// returns colorful classes for tag badges (
+    pub const fn tailwind_badge_class(&self) -> &'static str {
+        match self {
+            Tag::Rust => "bg-orange-500/15 text-orange-400 border border-orange-500/20",
+            Tag::Technology => "bg-blue-500/15 text-blue-400 border border-blue-500/20",
+            Tag::Action => "bg-red-500/15 text-red-400 border border-red-500/20",
+            Tag::SciFi => "bg-purple-500/15 text-purple-400 border border-purple-500/20",
+            Tag::Comedy => "bg-yellow-500/15 text-yellow-500 border border-yellow-500/20",
+            Tag::Drama => "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20",
+            Tag::Documentary => "bg-teal-500/15 text-teal-400 border border-teal-500/20",
+            Tag::Other(_) => "bg-zinc-800/60 text-zinc-400 border border-zinc-700/40",
+        }
     }
 }

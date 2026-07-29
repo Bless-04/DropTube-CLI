@@ -30,5 +30,11 @@ pub async fn home_page_handler(
     Query(query): Query<HomeQuery>,
 ) -> Html<String> {
     let port = state.port;
+
+    // Acquire a read lock on the cached index immediately (takes < 1ms)
+    let videos = {
+        let reader = state.index_cache.read().await;
+        reader.clone()
+    };
     Html(full_html)
 }

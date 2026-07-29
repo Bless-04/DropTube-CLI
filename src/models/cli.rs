@@ -1,3 +1,4 @@
+use clap::Parser;
 use std::path::PathBuf;
 
 /// Strongly typed config-line arguments
@@ -39,5 +40,44 @@ impl CliFlag {
             }
         }
         Ok(flags)
+    }
+}
+
+#[derive(Parser, Debug)]
+#[command(arg_required_else_help = true)]
+pub struct CliArgs {
+    /// Set to true if you want to look through subdirectories as well as the current directory
+    #[arg(short, default_value_t = false)]
+    pub recursive: bool,
+
+    /// port to listen on
+    #[arg(default_value_t = 8081)]
+    pub port: u16,
+
+    /// root path for files
+    #[arg(default_value = "./")]
+    pub path: PathBuf,
+}
+#[cfg(test)]
+mod tests {
+    /// Name of the executable
+    const EXECUTABLE: &str = "droptube";
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn verify_cli() {
+        CliArgs::command().debug_assert();
+    }
+
+    #[test]
+    fn parses_defaults() {
+        let args_result = CliArgs::try_parse_from([EXECUTABLE, "./test"]);
+        debug_assert!(args_result.is_ok()); //todo fix this failing
+        let args = args_result.unwrap();
+
+        assert_eq!(args.port, 8081);
+        assert_eq!(args.path, PathBuf::from("./test"));
+        assert_eq!(args.recursive, false);
     }
 }
