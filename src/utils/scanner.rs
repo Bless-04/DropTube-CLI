@@ -18,6 +18,55 @@ pub fn parse_video_info(path: &StdPath) -> ParsedVideoInfo {
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "Unknown Video".to_string());
 
+    // 1. Attempt sidecar JSON lookup first
+    let mut sidecar_path = path.to_path_buf();
+    if let Some(ext) = path.extension() {
+        sidecar_path.set_extension(format!("{}.json", ext.to_string_lossy()));
+    } else {
+        sidecar_path.set_extension("json");
+    }
+
+    if !sidecar_path.exists() {
+        // Fallback to video.json
+        let mut alt_sidecar = path.to_path_buf();
+        alt_sidecar.set_extension("json");
+        if alt_sidecar.exists() {
+            sidecar_path = alt_sidecar;
+        }
+    }
+
+    if sidecar_path.exists() {
+        if let Ok(content) = fs::read_to_string(&sidecar_path) {
+            #[derive(Deserialize)]
+            struct Sidecar {
+                rating: Option<u8>,
+                tags: Option<Vec<String>>,
+            }
+            if let Ok(meta) = serde_json::from_str::<Sidecar>(&content) {
+                let rating = Rating::from_u8(meta.rating.unwrap_or(0));
+                let tags = meta
+                    .tags
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|t| Tag::from_str(&t))
+                    .collect();
+                let display_name = stem.replace('_', " ").replace('.', " ");
+                return ParsedVideoInfo {
+                    display_name,
+                    rating,
+                    tags,
+                };
+            }
+        }
+    }
+
+    // 2. Fallback: Parse bracketed info in filename
+    // Pattern: "[5] [Rust,Tech] Filename.mp4"
+    let mut rating = Rating::Unrated;
+    let mut tags = Vec::new();
+    let mut title = stem.clone();
+
+    // Extract Rating
     if title.starts_with('[') {
         if let Some(end_idx) = title.find(']') {
             let rating_val = title[1..end_idx].trim();
