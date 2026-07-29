@@ -1,4 +1,4 @@
-pub mod handlers;
+mod handlers;
 
 use axum::Router;
 use axum::routing::{get, post};
@@ -7,7 +7,9 @@ use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::services::ServeDir;
 
 use crate::models::state::AppState;
-use handlers::{home_page_handler, explorer_root_handler, explorer_path_handler, refresh_index_handler};
+use crate::server::handlers::explorer::*;
+use crate::server::handlers::home::home_page_handler;
+use crate::server::handlers::scan::refresh_index_handler;
 
 pub fn create_router(state: AppState) -> Router {
     let router = Router::new()
