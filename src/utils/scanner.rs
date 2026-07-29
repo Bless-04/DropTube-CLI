@@ -65,8 +65,8 @@ pub fn scan_directory(
 
                         // Scan for thumbnail sidecar (e.g. video.jpg for video.mp4) todo not working yet
                         let mut thumbnail_path = None;
-                        for img_ext in &["jpg", "jpeg", "png", "webp"] {
-                            let mut test_thumb = path.clone();
+                        for img_ext in &ScanDirectoryParams::THUMBNAIL_EXT {
+                            let mut test_thumb = e_path.clone();
                             test_thumb.set_extension(img_ext);
                             if test_thumb.exists() && test_thumb.is_file() {
                                 let rel_thumb = test_thumb
@@ -79,7 +79,7 @@ pub fn scan_directory(
                             }
                         }
 
-                        if let Ok(metadata) = fs::metadata(&path) {
+                        if let Ok(metadata) = fs::metadata(&e_path) {
                             let file_size_mb = metadata.len() / (1024 * 1024);
                             let modified_time = metadata.modified().unwrap_or(SystemTime::now());
                             let unix_timestamp = modified_time
@@ -87,7 +87,7 @@ pub fn scan_directory(
                                 .map(|d| d.as_secs())
                                 .unwrap_or(0);
 
-                            videos.push(VideoFile {
+                            params.videos.push(VideoFile {
                                 file_name,
                                 display_name: video_info.display_name,
                                 file_size_mb,
@@ -98,12 +98,28 @@ pub fn scan_directory(
                                 thumbnail_path,
                             });
                         } else {
-                            warn!("Failed to retrieve metadata for file: {}", path.display());
+                            warn!("Failed to retrieve metadata for file: {}", e_path.display());
                         }
                     }
                 }
             }
         }
+    } else {
+        warn!(
+            "Failed to read contents of directory: {}",
+            current_dir.display()
+        );
+    }
+}
+
+/// Recursively or non-recursively scans directory for supported video files
+pub fn scan_directory(
+    dir: &StdPath,
+    base_dir: &StdPath,
+    recurse: bool,
+    videos: &mut Vec<VideoFile>,
+    count: &mut usize,
+) {
     } else {
         warn!("Failed to read contents of directory: {}", dir.display());
     }
