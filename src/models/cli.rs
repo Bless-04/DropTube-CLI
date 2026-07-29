@@ -48,8 +48,8 @@ impl CliFlag {
 #[command(arg_required_else_help = true)]
 pub struct CliArgs {
     /// Set to true if you want to look through subdirectories as well as the current directory
-    #[arg(short, default_value_t = false)]
-    pub recursive: bool,
+    #[arg(short = 'r', long = "recurse", default_value_t = 0)]
+    pub max_depth: u8,
 
     /// port to listen on
     #[arg(default_value_t = 8081)]
@@ -79,9 +79,6 @@ mod tests {
 
         assert_eq!(args.port, 8081);
         assert_eq!(args.path, PathBuf::from("./test"));
-        assert_eq!(args.recursive, false);
-    }
-}
         assert_eq!(args.max_depth, 0);
     }
 }
