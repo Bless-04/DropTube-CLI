@@ -27,41 +27,104 @@ pub fn parse_video_info(path: &StdPath) -> ParsedVideoInfo {
             }
         }
     }
-/// Recursively or non-recursively scans directory for supported video files
-pub fn scan_directory(
-    dir: &StdPath,
-    base_dir: &StdPath,
-    recurse: bool,
-    videos: &mut Vec<VideoFile>,
-    count: &mut usize,
-) {
-    if let Ok(entries) = fs::read_dir(dir) {
+
+    // Extract Tags
+    if title.starts_with('[') {
+        if let Some(end_idx) = title.find(']') {
+            let tags_val = &title[1..end_idx];
+            tags = tags_val.split(',').map(|t| Tag::from_str(t)).collect();
+            title = title[end_idx + 1..].trim().to_string();
+        }
+    }
+
+    let display_name = title.replace('_', " ").replace('.', " ");
+    ParsedVideoInfo {
+        display_name,
+        rating,
+        tags,
+    }
+}
+
+pub struct ScanDirectoryParams<'a> {
+    /// cli args used to infer everything
+    pub cli_args: &'a CliArgs,
+    /// The base directory from which the scan started, used for relative paths
+    pub base_path: &'a PathBuf,
+    /// depth of recursion
+    pub depth: u8,
+    pub count: usize,
+    pub videos: Vec<VideoFile>,
+}
+impl<'a> ScanDirectoryParams<'a> {
+    const THUMBNAIL_EXT: [&'static str; 4] = ["jpg", "jpeg", "png", "webp"];
+    pub fn new(cli_args: &'a CliArgs) -> Self {
+        Self {
+            cli_args,
+            base_path: &cli_args.path,
+            depth: 0,
+            count: 0,
+            videos: Vec::new(),
+        }
+    }
+
+    /// true if cli args max depth if 0, false otherwise
+    pub fn is_recursive(&self) -> bool {
+        self.cli_args.max_depth == 0
+    }
+    pub fn get_videos(self) -> Vec<VideoFile> {
+        self.videos
+    }
+}
+
+pub fn scan_dir(params: &mut ScanDirectoryParams) {
+    let current_dir = &params.cli_args.path;
+    let base_dir = &params.base_path;
+
+    if let Ok(entries) = fs::read_dir(current_dir) {
+        info!("Scanning directory: {}", current_dir.display());
         for entry in entries.flatten() {
-            let path = entry.path();
-            if recurse && path.is_dir() {
-                scan_directory(&path, base_dir, recurse, videos, count);
-            } else if path.is_file() {
-                *count += 1;
+            let e_path = entry.path();
+            if params.is_recursive() && e_path.is_dir() {
+                let mut sub_params = ScanDirectoryParams {
+                    cli_args: &params.cli_args,
+                    base_path: &e_path, // path remains the same
+                    depth: params.depth + 1,
+                    count: 0,           // Reset count for sub-call, will be accumulated
+                    videos: Vec::new(), // Reset videos for sub-call, will be accumulated
+                };
+                sub_params.base_path = &e_path; // Update path for the sub-call
+                scan_dir(&mut sub_params);
+
+                // Accumulate results from the sub-call
+                params.count += sub_params.count;
+                params.videos.extend(sub_params.videos);
+            } else if e_path.is_file() {
+                params.count += 1;
 
                 // Show dynamic scanner progress in console on startup
-                if *count % 10 == 0 || *count == 1 {
+                if params.count % 10 == 0 || params.count == 1 {
                     print!(
                         "\r\x1b[2K\x1b[1;33m[INFO]\x1b[0m Filesystem indexing: {} items found...",
-                        count
+                        params.count
                     );
+
+                    /*print!(
+                        "\r\x1b[2K\x1b[1;33m Filesystem indexing: {} items found...",
+                        params.count
+                    );*/
                     let _ = std::io::Write::flush(&mut std::io::stdout());
                 }
 
-                if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+                if let Some(ext) = e_path.extension().and_then(|s| s.to_str()) {
                     if let Some(format) = VideoFormat::from_ext(ext) {
                         // Calculate web-friendly relative path from base_dir for streaming url
-                        let file_name = path
+                        let file_name = e_path
                             .strip_prefix(base_dir)
                             .map(|p| p.to_string_lossy().to_string())
-                            .unwrap_or_else(|_| path.to_string_lossy().to_string())
+                            .unwrap_or_else(|_| e_path.to_string_lossy().to_string())
                             .replace('\\', "/");
 
-                        let video_info: ParsedVideoInfo = parse_video_info(&path);
+                        let video_info: ParsedVideoInfo = parse_video_info(&e_path);
 
                         // Scan for thumbnail sidecar (e.g. video.jpg for video.mp4) todo not working yet
                         let mut thumbnail_path = None;
