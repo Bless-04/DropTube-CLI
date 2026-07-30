@@ -1,4 +1,4 @@
-use crate::config::constants::CLEAR_LINE_ANSI;
+use crate::config::constants::CLEAR_LINE;
 use crate::models::video::{Rating, Tag, VideoFile, VideoFormat};
 use log::{info, warn};
 use std::fs;
@@ -203,7 +203,7 @@ pub fn scan_directory(params: &mut ScanDirectoryParams) {
         }
     }
 
-    println!("{CLEAR_LINE_ANSI}Scanned: {}", current_dir.display());
+    println!("{CLEAR_LINE}Scanned: {}", current_dir.display());
     let _ = std::io::stdout().flush();
 }
 
