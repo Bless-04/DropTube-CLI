@@ -4,11 +4,11 @@ use std::sync::LazyLock;
 
 /// Clap-based argument definition used for `--help` generation and parsing.
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[command(author="Blessing", version, about, long_about = None)]
 pub struct CliArgs {
     /// Maximum subfolder depth to recurse into.
     ///
-    /// `0` = top-level only, `255` = unlimited (default: `0`).
+    /// `0` = current directory only, `255` = unlimited (default: `0`).
     #[arg(short = 'd', long = "depth", default_value_t = 0)]
     pub max_depth: u8,
 
