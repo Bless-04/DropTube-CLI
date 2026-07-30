@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::RwLock;
 
+/// Graceful Shutdown Signal Handler
 async fn shutdown_signal() {
     let ctrl_c = async {
         if let Err(e) = tokio::signal::ctrl_c().await {
@@ -47,6 +48,7 @@ async fn shutdown_signal() {
     }
 }
 
+/// Entry Point for the application
 #[tokio::main]
 async fn main() {
     if let Err(e) = create_log(Level::Info) {
