@@ -1,8 +1,6 @@
-use crate::config::constants::CLEAR_LINE;
 use crate::models::video::{Rating, Tag, VideoFile, VideoFormat};
-use log::{info, warn};
+use log::warn;
 use std::fs;
-use std::io::Write;
 use std::path::{Path as StdPath, PathBuf};
 use std::time::SystemTime;
 
@@ -104,8 +102,8 @@ impl ScanDirectoryParams {
 ///
 /// Results are accumulated in `params.videos`; the total item count in `params.count`.
 pub fn scan_directory(params: &mut ScanDirectoryParams) {
-    let current_dir = params.current_dir.clone();
-    let base_dir = params.base_dir.clone();
+    let current_dir = &params.current_dir;
+    let base_dir = &params.base_dir;
 
     let entries = match fs::read_dir(&current_dir) {
         Ok(e) => e,
@@ -202,11 +200,7 @@ pub fn scan_directory(params: &mut ScanDirectoryParams) {
             }
         }
     }
-
-    println!("{CLEAR_LINE}Scanned: {}", current_dir.display());
-    let _ = std::io::stdout().flush();
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
