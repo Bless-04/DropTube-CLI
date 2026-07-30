@@ -11,6 +11,7 @@ use crate::server::handlers::explorer::*;
 use crate::server::handlers::home::home_page_handler;
 use crate::server::handlers::scan::refresh_index_handler;
 
+/// creates the router for App
 pub fn create_router(state: AppState) -> Router {
     let router = Router::new()
         .route("/", get(home_page_handler))
