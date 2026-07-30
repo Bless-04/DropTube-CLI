@@ -1,6 +1,7 @@
 use clap::Parser;
+use log::error;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{LazyLock, OnceLock};
 
 /// Strongly typed config-line arguments
 #[derive(Debug, PartialEq, Eq)]
@@ -59,9 +60,21 @@ pub struct CliArgs {
     #[arg(default_value = "./")]
     pub path: PathBuf,
 }
-/// Global readonly CLI_Args
-pub static CLI_ARGS: OnceLock<CliArgs> = OnceLock::new();
 
+// initializes itself from std::env::args if nothing has
+static CLI_ARGS: LazyLock<CliArgs> = LazyLock::new(|| match CliArgs::try_parse() {
+    Ok(parsed_args) => {
+        return parsed_args;
+    }
+    Err(e) => {
+        error!("CLI Error: {}", e);
+        CliArgs::parse()
+    }
+});
+
+pub fn get() -> &'static CliArgs {
+    &CLI_ARGS
+}
 #[cfg(test)]
 mod tests {
     /// Name of the executable
