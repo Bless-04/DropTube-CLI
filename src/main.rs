@@ -11,6 +11,7 @@ use local_ip_address::local_ip;
 use log::{Level, error, info, warn};
 use std::cmp::Reverse;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::RwLock;
@@ -77,29 +78,28 @@ async fn main() {
 
     // CLI Argument Parsing
     let args = cli::get();
-    let movie_directory = args.path.clone();
-    let depth = args.max_depth;
+    let src_dir = args.path.clone();
     let explicit_port = args.port;
 
     // Validate directory
-    if !movie_directory.exists() {
-        error!("Directory '{}' does not exist.", movie_directory.display());
+    if !src_dir.exists() {
+        error!("Directory '{}' does not exist.", src_dir.display());
         std::process::exit(1);
     }
-    if !movie_directory.is_dir() {
-        error!("'{}' is not a directory.", movie_directory.display());
+    if !src_dir.is_dir() {
+        error!("'{}' is not a directory.", src_dir.display());
         std::process::exit(1);
     }
 
-    let canonical_dir = match movie_directory.canonicalize() {
+    let canonical_dir = match src_dir.canonicalize() {
         Ok(p) => p,
         Err(e) => {
             warn!(
                 "Could not canonicalize path '{}': {}. Using as-is.",
-                movie_directory.display(),
+                src_dir.display(),
                 e
             );
-            movie_directory.clone()
+            src_dir.clone()
         }
     };
 
@@ -107,19 +107,18 @@ async fn main() {
     info!("Performing initial filesystem index scan...");
     let start_time = SystemTime::now();
 
-    let mut initial_params = ScanDirectoryParams::new(canonical_dir.clone(), depth);
+    let mut initial_params = ScanDirectoryParams::new(canonical_dir.clone(), args.max_depth);
     scan_directory(&mut initial_params);
 
     let scan_count = initial_params.count;
-    let mut initial_videos = initial_params.videos;
-    initial_videos.sort_by_key(|v| Reverse(v.unix_timestamp));
-
     let duration = start_time.elapsed().map(|d| d.as_millis()).unwrap_or(0);
+    let mut initial_videos = initial_params.videos;
     info!(
         "Finished initial scan in {duration}ms. Found {} video(s) out of {} scanned item(s).",
         initial_videos.len(),
         scan_count
     );
+    initial_videos.sort_by_key(|v| Reverse(v.unix_timestamp));
 
     let index_cache = Arc::new(RwLock::new(initial_videos));
 
@@ -150,6 +149,7 @@ async fn main() {
                 }
                 Err(e) => {
                     if e.kind() == std::io::ErrorKind::AddrInUse {
+                        // address goes up by 1 if in use
                         active_port = active_port.saturating_add(1);
                     } else {
                         error!("Failed to bind to port {}: {}", active_port, e);
@@ -160,11 +160,11 @@ async fn main() {
         }
     };
 
-    println!("\x1b[1;36m============================================================\x1b[0m");
+    println!("\n\x1b[1;36m============================================================\x1b[0m");
     println!("🎬 \x1b[1;32mDropTube\x1b[0m - Local Media Server");
     println!("\x1b[1;36m============================================================\x1b[0m");
     display::serving_dir(canonical_dir.display());
-    display::scanning_mode(depth);
+    display::scanning_mode(args.max_depth);
     display::local_urls(local_ip_addr, port);
     println!("\x1b[1;36m============================================================\x1b[0m");
 
@@ -177,7 +177,7 @@ async fn main() {
 
             let dir = dir_clone.clone();
             let result = tokio::task::spawn_blocking(move || {
-                let mut params = ScanDirectoryParams::new(dir, depth);
+                let mut params = ScanDirectoryParams::new(dir, args.max_depth);
                 scan_directory(&mut params);
                 params.videos
             })
@@ -196,15 +196,14 @@ async fn main() {
         }
     });
 
-    // Build application routes
     let app: Router = create_router(AppState {
         movie_directory: canonical_dir.clone(),
         port,
-        depth,
+        depth: args.max_depth,
         index_cache,
     });
 
-    // Run the Axum server with graceful shutdown
+    /// Run the Axum server with graceful shutdown
     if let Err(e) = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
