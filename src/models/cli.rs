@@ -59,6 +59,9 @@ pub struct CliArgs {
     #[arg(default_value = "./")]
     pub path: PathBuf,
 }
+/// Global readonly CLI_Args
+pub static CLI_ARGS: OnceLock<CliArgs> = OnceLock::new();
+
 #[cfg(test)]
 mod tests {
     /// Name of the executable
