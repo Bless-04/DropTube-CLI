@@ -1,15 +1,15 @@
+use crate::config::constants::HTML_SOURCE;
 use crate::models::state::AppState;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::{Html, IntoResponse, Redirect},
 };
+use local_ip_address::local_ip;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use std::fs;
 use std::path::Path as StdPath;
 use std::time::SystemTime;
-use crate::config::constants::HTML_SOURCE;
-use local_ip_address::local_ip;
 
 /// Explorer Root routing helper
 pub async fn explorer_root_handler(State(state): State<AppState>) -> impl IntoResponse {
@@ -32,7 +32,7 @@ async fn explorer_handler(
     // 1. Percent-decode the sub-path
     let decoded_sub_path = percent_encoding::percent_decode_str(&sub_path)
         .decode_utf8()
-        .unwrap_or_else(|_| std::borrow::Cow::Borrowed(""));
+        .unwrap_or(std::borrow::Cow::Borrowed(""));
 
     // 2. Safe path join
     let target_path = state.movie_directory.join(decoded_sub_path.as_ref());
@@ -105,10 +105,8 @@ async fn explorer_handler(
                 let p = entry.path();
                 if p.is_dir() {
                     folders.push(name);
-                } else {
-                    if let Ok(meta) = fs::metadata(&p) {
-                        files.push((name, meta.len(), meta.modified()));
-                    }
+                } else if let Ok(meta) = fs::metadata(&p) {
+                    files.push((name, meta.len(), meta.modified()));
                 }
             }
 
