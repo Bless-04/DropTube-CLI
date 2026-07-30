@@ -1,34 +1,37 @@
 use axum::Router;
-use clap::Parser;
+
 use droptube::config::constants::DEFAULT_PORT;
 use droptube::config::logger::create_log;
-use droptube::models::cli::{CliArgs, CliFlag};
+use droptube::models::cli;
 use droptube::models::state::AppState;
 use droptube::server::create_router;
 use droptube::utils::display;
-use droptube::utils::scanner::scan_directory;
+use droptube::utils::scanner::{ScanDirectoryParams, scan_directory};
 use local_ip_address::local_ip;
 use log::{Level, error, info, warn};
-use std::io::Write;
+use std::cmp::Reverse;
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::RwLock;
 
 async fn shutdown_signal() {
     let ctrl_c = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            error!("Failed to install Ctrl+C handler: {}", e);
+        }
     };
 
     #[cfg(unix)]
     let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(e) => {
+                error!("Failed to install SIGTERM handler: {}", e);
+            }
+        }
     };
 
     #[cfg(not(unix))]
@@ -46,7 +49,12 @@ async fn shutdown_signal() {
 
 #[tokio::main]
 async fn main() {
-    // panic hook for global log safety
+    if let Err(e) = create_log(Level::Info) {
+        eprintln!("Failed to attach logger: {}", e);
+        std::process::exit(1);
+    }
+
+    // Global panic hook ; logs panics through the tracing/log stack .
     std::panic::set_hook(Box::new(|panic_info| {
         let location = panic_info
             .location()
@@ -65,31 +73,11 @@ async fn main() {
         error!("System panic detected at {}: {}", location, message);
     }));
 
-    // 2. CLI Argument Parsing
-    let args: Vec<String> = std::env::args().collect();
-    //let args = CliArgs::parse();
-    let parsed_flags = match CliFlag::parse_args(&args) {
-        Ok(f) => f,
-        Err(e) => {
-            error!("CLI Error: {}", e);
-            eprintln!("Usage: droptube.exe [DIRECTORY] [--port PORT] [--no-recurse]");
-            std::process::exit(1);
-        }
-    };
-
-    create_log(Level::Info).expect("Failed To Attach Logger");
-
-    let mut movie_directory = PathBuf::from(".");
-    let mut recurse = true;
-    let mut explicit_port = None;
-
-    for flag in parsed_flags {
-        match flag {
-            CliFlag::NoRecurse => recurse = false,
-            CliFlag::Port(p) => explicit_port = Some(p),
-            CliFlag::Path(path) => movie_directory = path,
-        }
-    }
+    // CLI Argument Parsing
+    let args = cli::get();
+    let movie_directory = args.path.clone();
+    let depth = args.max_depth;
+    let explicit_port = args.port;
 
     // Validate directory
     if !movie_directory.exists() {
@@ -101,55 +89,55 @@ async fn main() {
         std::process::exit(1);
     }
 
-    let canonical_dir = movie_directory
-        .canonicalize()
-        .unwrap_or(movie_directory.clone());
+    let canonical_dir = match movie_directory.canonicalize() {
+        Ok(p) => p,
+        Err(e) => {
+            warn!(
+                "Could not canonicalize path '{}': {}. Using as-is.",
+                movie_directory.display(),
+                e
+            );
+            movie_directory.clone()
+        }
+    };
 
-    // 3. Build initial index cache synchronously before server starts to avoid blank page
-    println!("\x1b[1;33m[INFO]\x1b[0m Performing initial filesystem index scan...");
+    // Build initial index cache synchronously before the server starts to avoid a blank page.
+    info!("Performing initial filesystem index scan...");
     let start_time = SystemTime::now();
-    let mut initial_videos = Vec::new();
-    let mut count = 0;
-    scan_directory(
-        &canonical_dir,
-        &canonical_dir,
-        recurse,
-        &mut initial_videos,
-        &mut count,
-    );
-    initial_videos.sort_by_key(|v| std::cmp::Reverse(v.unix_timestamp));
+
+    let mut initial_params = ScanDirectoryParams::new(canonical_dir.clone(), depth);
+    scan_directory(&mut initial_params);
+
+    let scan_count = initial_params.count;
+    let mut initial_videos = initial_params.videos;
+    initial_videos.sort_by_key(|v| Reverse(v.unix_timestamp));
 
     let duration = start_time.elapsed().map(|d| d.as_millis()).unwrap_or(0);
-    print!("\r\x1b[2K"); // Clear the live progress text
-    let _ = std::io::Write::flush(&mut std::io::stdout());
     info!(
-        "Finished initial scan in {}ms. Found {} video(s) out of {} scanned item(s).",
-        duration,
+        "Finished initial scan in {duration}ms. Found {} video(s) out of {} scanned item(s).",
         initial_videos.len(),
-        count
+        scan_count
     );
 
     let index_cache = Arc::new(RwLock::new(initial_videos));
 
-    // Discover LAN IP Address
+    // Discover LAN IP address for display
     let local_ip_addr = local_ip()
         .map(|ip| ip.to_string())
         .unwrap_or_else(|_| "0.0.0.0".to_string());
 
-    // Bind logic
+    // Bind to port (strict if explicit, otherwise scan upward from default)
     let mut port = explicit_port.unwrap_or(DEFAULT_PORT);
     let listener = if explicit_port.is_some() {
-        // Strict bind
         let bind_addr = SocketAddr::from(([0, 0, 0, 0], port));
         match tokio::net::TcpListener::bind(bind_addr).await {
-            Ok(listener) => listener,
+            Ok(l) => l,
             Err(e) => {
                 error!("Failed to bind to port {}: {}", port, e);
                 std::process::exit(1);
             }
         }
     } else {
-        // Dynamic fallback scan starting from default_port
         let mut active_port = DEFAULT_PORT;
         loop {
             let bind_addr = SocketAddr::from(([0, 0, 0, 0], active_port));
@@ -160,7 +148,7 @@ async fn main() {
                 }
                 Err(e) => {
                     if e.kind() == std::io::ErrorKind::AddrInUse {
-                        active_port += 1;
+                        active_port = active_port.saturating_add(1);
                     } else {
                         error!("Failed to bind to port {}: {}", active_port, e);
                         std::process::exit(1);
@@ -174,49 +162,47 @@ async fn main() {
     println!("🎬 \x1b[1;32mDropTube\x1b[0m - Local Media Server");
     println!("\x1b[1;36m============================================================\x1b[0m");
     display::serving_dir(canonical_dir.display());
-    display::scanning_mode(recurse);
-
+    display::scanning_mode(depth);
     display::local_urls(local_ip_addr, port);
     println!("\x1b[1;36m============================================================\x1b[0m");
 
-    // Spawning background worker task to re-scan the directory in background
+    // Background worker: re-scans the directory every 30 seconds.
     let cache_clone = index_cache.clone();
     let dir_clone = canonical_dir.clone();
-    let recurse_clone = recurse;
     tokio::spawn(async move {
         loop {
-            // Re-scan every 30 seconds
             tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
 
             let dir = dir_clone.clone();
-            let scanned = tokio::task::spawn_blocking(move || {
-                let mut list = Vec::new();
-                let mut count = 0;
-                scan_directory(&dir, &dir, recurse_clone, &mut list, &mut count);
-                list
+            let result = tokio::task::spawn_blocking(move || {
+                let mut params = ScanDirectoryParams::new(dir, depth);
+                scan_directory(&mut params);
+                params.videos
             })
-            .await
-            .unwrap_or_default();
+            .await;
 
-            let mut sorted = scanned;
-            sorted.sort_by_key(|v| std::cmp::Reverse(v.unix_timestamp));
-
-            {
-                let mut cache_writer = cache_clone.write().await;
-                *cache_writer = sorted;
+            match result {
+                Ok(mut videos) => {
+                    videos.sort_by_key(|v| Reverse(v.unix_timestamp));
+                    let mut cache_writer = cache_clone.write().await;
+                    *cache_writer = videos;
+                }
+                Err(e) => {
+                    warn!("Background scan task panicked: {}", e);
+                }
             }
         }
     });
 
-    // 4. Build application routes with panic mitigation middleware
+    // Build application routes
     let app: Router = create_router(AppState {
         movie_directory: canonical_dir.clone(),
         port,
-        recurse,
+        depth,
         index_cache,
     });
 
-    // 5. Run the Axum Server with Graceful Shutdown
+    // Run the Axum server with graceful shutdown
     if let Err(e) = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
