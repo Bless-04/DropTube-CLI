@@ -91,40 +91,127 @@ pub async fn home_page_handler(
 
         format!(
             r#"
-            <div class="lg:col-span-2 flex flex-col">
-                <!-- Video Container with 16:9 Aspect Ratio -->
-                <div class="relative w-full aspect-video bg-black rounded-none md:rounded-2xl overflow-hidden shadow-2xl border border-zinc-800">
+            <div class="col-12 col-lg-8 mb-4">
+                <!-- Video wrapper: position:relative so the seek overlay can be placed on top -->
+                <div class="ratio ratio-16x9 bg-black rounded overflow-hidden shadow-sm" style="position:relative;">
                     <video
                         id="video-player"
                         src="/video/{}"
-                        class="w-full h-full"
+                        class="w-100 h-100"
                         controls
                         autoplay
                         playsinline>
                     </video>
+
+                    <!-- Double-tap seek overlay (pointer-events:none in the centre so controls still work) -->
+                    <div id="seek-overlay" style="
+                        position:absolute; inset:0; display:grid;
+                        grid-template-columns:30% 40% 30%;
+                        pointer-events:none; z-index:10;">
+                        <!-- Left zone: seek back 5 s -->
+                        <div id="seek-left" style="pointer-events:auto; cursor:pointer;" aria-label="Seek back 5 seconds"></div>
+                        <!-- Centre zone: pass clicks through to the native video controls -->
+                        <div style="pointer-events:none;"></div>
+                        <!-- Right zone: seek forward 5 s -->
+                        <div id="seek-right" style="pointer-events:auto; cursor:pointer;" aria-label="Seek forward 5 seconds"></div>
+                    </div>
+
+                    <!-- Seek ripple feedback badge -->
+                    <div id="seek-badge" style="
+                        position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+                        background:rgba(0,0,0,0.65); color:#fff; font-size:0.85rem; font-weight:600;
+                        padding:6px 14px; border-radius:20px; pointer-events:none;
+                        opacity:0; transition:opacity 0.15s ease; white-space:nowrap; z-index:20;">
+                    </div>
                 </div>
-                <!-- Video Metadata -->
-                <div class="p-4 md:px-0">
-                    <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                <div class="p-3">
+                    <div class="d-flex flex-wrap gap-1 mb-2">
                         {}
                     </div>
-                    <h1 class="text-white text-lg md:text-2xl font-bold tracking-tight leading-tight">{}</h1>
-                    <div class="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs md:text-sm text-zinc-400 border-b border-zinc-800 pb-4">
-                        <div class="flex items-center gap-3">
-                            <span class="bg-red-600/15 text-red-500 font-semibold px-2.5 py-0.5 rounded-full text-xs uppercase">{} format</span>
+                    <h4 class="fw-bold mb-2">{}</h4>
+                    <div class="d-flex flex-wrap align-items-center justify-content-between text-muted small border-bottom pb-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-danger">{} format</span>
                             <span>•</span>
                             <span>{}</span>
                             <span>•</span>
-                            <span class="{} font-mono font-medium tracking-wider">{}</span>
+                            <span class="{}">{}</span>
                         </div>
-                        <a href="/video/{}" download class="inline-flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-white font-medium px-4 py-1.5 rounded-full transition-all text-xs">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                            Download File
+                        <a href="/video/{}" download class="btn btn-dark btn-sm rounded-pill mt-2 mt-sm-0 text-decoration-none">
+                            <i class="fas fa-download me-1"></i> Download
                         </a>
                     </div>
                     {}
                 </div>
             </div>
+
+            <script>
+            (function () {{
+                'use strict';
+
+                /** Milliseconds between two taps/clicks that count as a double-tap. */
+                var DOUBLE_TAP_MS = 300;
+                /** Seconds to seek per double-tap. */
+                var SEEK_SECONDS = 5;
+                /** How long (ms) the feedback badge stays visible. */
+                var BADGE_DURATION_MS = 600;
+
+                var video = document.getElementById('video-player');
+                var badge = document.getElementById('seek-badge');
+                var badgeTimer = null;
+
+                /**
+                 * Shows the seek-feedback badge then fades it out.
+                 * @param {{string}} text - Label to display inside the badge.
+                 */
+                function showBadge(text) {{
+                    badge.textContent = text;
+                    badge.style.opacity = '1';
+                    clearTimeout(badgeTimer);
+                    badgeTimer = setTimeout(function () {{
+                        badge.style.opacity = '0';
+                    }}, BADGE_DURATION_MS);
+                }}
+
+                /**
+                 * Attaches double-tap/double-click detection to a zone element.
+                 * On double interaction, `onDoubleTap` is called.
+                 * @param {{HTMLElement}} zone
+                 * @param {{function(): void}} onDoubleTap
+                 */
+                function attachDoubleTap(zone, onDoubleTap) {{
+                    var lastTap = 0;
+
+                    // Touch devices
+                    zone.addEventListener('touchend', function (e) {{
+                        var now = Date.now();
+                        if (now - lastTap < DOUBLE_TAP_MS) {{
+                            e.preventDefault(); // prevent the browser triggering a synthetic click too
+                            onDoubleTap();
+                            lastTap = 0;
+                        }} else {{
+                            lastTap = now;
+                        }}
+                    }}, {{ passive: false }});
+
+                    // Mouse / desktop
+                    zone.addEventListener('dblclick', function (e) {{
+                        e.preventDefault();
+                        onDoubleTap();
+                    }});
+                }}
+
+                attachDoubleTap(document.getElementById('seek-left'), function () {{
+                    video.currentTime = Math.max(0, video.currentTime - SEEK_SECONDS);
+                    showBadge('\u21a9 ' + SEEK_SECONDS + 's');
+                }});
+
+                attachDoubleTap(document.getElementById('seek-right'), function () {{
+                    video.currentTime = Math.min(video.duration || Infinity, video.currentTime + SEEK_SECONDS);
+                    showBadge(SEEK_SECONDS + 's \u21aa');
+                }});
+            }})();
+            </script>
             "#,
             encoded_filename,
             active_tags_badges,
@@ -148,7 +235,7 @@ pub async fn home_page_handler(
             .as_ref()
             .map(|v| v.file_name == video.file_name)
             .unwrap_or(false);
-        let active_card_border = if is_playing_card {
+        let _active_card_border = if is_playing_card {
             "border border-red-600 ring-2 ring-red-600/20"
         } else {
             "border border-transparent"
@@ -227,30 +314,32 @@ pub async fn home_page_handler(
             // Watch page side list (compact horizontal cards)
             format!(
                 r#"
-                <div class="video-card flex gap-3 p-2 rounded-xl cursor-pointer hover:bg-zinc-900 transition-colors duration-150 {}"
+                <div class="d-flex gap-2 p-2 rounded cursor-pointer {}"
                      data-title="{}"
                      data-tags="{}"
                      onclick="window.location.href='/?v={}'">
-                    <!-- Compact Thumbnail -->
-                    <div class="relative w-36 aspect-video bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden shadow-inner">
+                    <div class="position-relative bg-dark rounded flex-shrink-0" style="width: 160px; height: 90px; overflow: hidden;">
                         {}
-                        <span class="absolute bottom-1 right-1 bg-black/85 text-[10px] px-1 py-0.2 rounded font-semibold text-zinc-100">{}</span>
+                        <span class="position-absolute bottom-0 end-0 bg-dark text-white px-1 m-1 rounded" style="font-size: 0.7rem;">{}</span>
                     </div>
-                    <!-- Details -->
-                    <div class="flex flex-col min-w-0 justify-center">
-                        <h4 class="text-white text-xs md:text-sm font-semibold truncate leading-tight">{}</h4>
-                        <div class="flex items-center gap-1.5 mt-1">
-                            <span class="text-[9px] uppercase font-semibold text-zinc-400">{}</span>
-                            <span class="{} text-[9px]">{}</span>
+                    <div class="d-flex flex-column justify-content-center overflow-hidden w-100">
+                        <h6 class="text-truncate mb-1" style="font-size: 0.9rem;">{}</h6>
+                        <div class="text-muted" style="font-size: 0.75rem;">
+                            <span class="text-uppercase">{}</span>
+                            <span class="{}">{}</span>
                         </div>
-                        <div class="flex flex-wrap gap-1 mt-1">
+                        <div class="d-flex flex-wrap gap-1 mt-1">
                             {}
                         </div>
-                        <span class="time-elapsed text-[10px] text-zinc-500 mt-1" data-timestamp="{}"></span>
+                        <span class="time-elapsed text-muted mt-1" style="font-size: 0.75rem;" data-timestamp="{}"></span>
                     </div>
                 </div>
                 "#,
-                active_card_border,
+                if is_playing_card {
+                    "bg-light border border-danger"
+                } else {
+                    "hover-bg-light"
+                },
                 video.display_name,
                 tags_csv,
                 encoded_filename,
@@ -267,38 +356,32 @@ pub async fn home_page_handler(
             // Main page feed grid (standard vertical cards)
             format!(
                 r#"
-                <div class="video-card group flex flex-col bg-[#181818] rounded-2xl cursor-pointer overflow-hidden hover:scale-[1.02] hover:shadow-2xl transition-all duration-200 border border-zinc-800/40"
-                     data-title="{}"
-                     data-tags="{}"
-                     onclick="window.location.href='/?v={}'">
-                    <!-- Standard Thumbnail -->
-                    <div class="relative w-full aspect-video bg-[#121212] flex items-center justify-center overflow-hidden">
-                        <div class="absolute inset-0 bg-black opacity-0 group-hover:opacity-10 transition-opacity duration-200 text-center"></div>
-                        {}
-                        <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-center">
-                            <div class="w-14 h-14 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center transform group-hover:scale-110 transition-transform duration-200">
-                                <svg class="w-8 h-8 text-white translate-x-0.5" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M8 5v14l11-7z"/>
-                                </svg>
-                            </div>
-                        </div>
-                        <span class="absolute bottom-2 right-2 bg-black/85 text-xs px-2 py-0.5 rounded-md font-semibold text-zinc-100 shadow-md">{}</span>
-                    </div>
-                    <!-- Details -->
-                    <div class="flex p-4 gap-3 bg-[#0f0f0f] border-t border-zinc-900">
-                        <div class="w-9 h-9 rounded-full bg-gradient-to-tr from-red-650 to-rose-500 flex-shrink-0 flex items-center justify-center font-bold text-white shadow-md text-sm">🦀</div>
-                        <div class="flex flex-col min-w-0 w-full">
-                            <h3 class="text-white text-sm font-semibold group-hover:text-red-500 transition-colors line-clamp-2 leading-tight">{}</h3>
-                            <div class="flex items-center gap-1.5 mt-1 text-[11px] text-zinc-400 font-medium">
-                                <span class="uppercase">{}</span>
-                                <span>•</span>
-                                <span class="{}">{}</span>
-                            </div>
-                            <div class="flex flex-wrap gap-1 mt-1.5">
+                <div class="col-12 col-sm-6 col-lg-4 col-xl-3 video-card-container">
+                    <div class="video-card h-100" data-title="{}" data-tags="{}">
+                        <a href="/?v={}" class="text-decoration-none text-dark d-block">
+                            <div class="position-relative bg-dark" style="aspect-ratio: 16/9; overflow: hidden;">
                                 {}
+                                <span class="position-absolute bottom-0 end-0 bg-dark text-white px-1 m-1 rounded" style="font-size: 0.75rem; opacity: 0.85;">{}</span>
                             </div>
-                            <span class="time-elapsed text-[10px] text-zinc-500 mt-2 font-medium" data-timestamp="{}"></span>
-                        </div>
+                            <div class="card-body p-2 mt-2">
+                                <div class="d-flex">
+                                    <div class="channel-icon me-2">
+                                        <div class="rounded-circle bg-danger text-white d-flex align-items-center justify-content-center" style="width:36px; height:36px; font-size:14px; font-weight:bold;">🦀</div>
+                                    </div>
+                                    <div class="w-100 overflow-hidden">
+                                        <h6 class="card-title mb-1 text-truncate" style="font-size: 0.95rem; font-weight: 600;">{}</h6>
+                                        <p class="card-text video-stats mb-0 text-muted" style="font-size: 0.8rem;">
+                                            <span class="text-uppercase">{}</span> • 
+                                            <span class="{}">{}</span>
+                                        </p>
+                                        <div class="d-flex flex-wrap gap-1 mt-1">
+                                            {}
+                                        </div>
+                                        <p class="time-elapsed text-muted mt-1 mb-0" style="font-size: 0.75rem;" data-timestamp="{}"></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </a>
                     </div>
                 </div>
                 "#,
@@ -320,12 +403,12 @@ pub async fn home_page_handler(
 
     if video_cards_html.is_empty() {
         video_cards_html = r#"
-            <div class="col-span-full flex flex-col items-center justify-center py-24 px-4 text-center">
-                <div class="w-16 h-16 rounded-full bg-zinc-800/40 flex items-center justify-center mb-4">
-                    <svg class="w-8 h-8 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            <div class="col-12 text-center py-5 mt-5">
+                <div class="mb-3 text-muted">
+                    <i class="fas fa-video fa-3x"></i>
                 </div>
-                <h3 class="text-zinc-300 font-bold text-lg">No Videos Available</h3>
-                <p class="text-zinc-500 text-sm mt-1 max-w-xs">Drop mp4, webm or mkv files in the served directory to instantly view them here.</p>
+                <h3 class="fw-bold">No Videos Available</h3>
+                <p class="text-muted">Drop mp4, webm or mkv files in the served directory to instantly view them here.</p>
             </div>
             "#.to_string();
     }
@@ -334,11 +417,11 @@ pub async fn home_page_handler(
     let main_content_html = if has_active {
         format!(
             r#"
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-7xl mx-auto py-0 md:py-6">
+            <div class="row">
                 {}
-                <div class="lg:col-span-1 p-4 md:p-0 flex flex-col gap-4">
-                    <h3 class="text-white text-base font-bold tracking-tight border-b border-zinc-800 pb-2">Up Next</h3>
-                    <div class="flex flex-col gap-2 overflow-y-auto max-h-[600px] pr-1 scrollbar-thin">
+                <div class="col-12 col-lg-4">
+                    <h5 class="fw-bold mb-3 border-bottom pb-2">Up Next</h5>
+                    <div class="d-flex flex-column gap-2 pe-2" style="max-height: 600px; overflow-y: auto;">
                         {}
                     </div>
                 </div>
@@ -347,20 +430,14 @@ pub async fn home_page_handler(
             player_html, video_cards_html
         )
     } else {
-        format!(
-            r#"
-            <div class="max-w-7xl mx-auto px-4 py-8">
-                <h2 class="text-white text-lg md:text-xl font-bold tracking-tight mb-6 flex items-center gap-2">
-                    <span class="w-1.5 h-6 bg-red-600 rounded-full"></span>
-                    Local Video Feed
-                </h2>
-                <div class="grid grid-cols-1 sm::grid-cols-2 md::grid-cols-3 lg:grid-cols-4 gap-6">
-                    {}
-                </div>
-            </div>
-            "#,
-            video_cards_html
-        )
+        // Just return the video cards directly, the template already has `<div class="row g-4">` surrounding `{{CONTENT}}`
+        // Wait, if I return it directly, they will be inside the `row g-4`.
+        // Let's wrap them in a fragment or just return them as is, because `{{CONTENT}}` is inside the `row g-4` in the template.
+        // Wait, what if we are in the `has_active` case? In that case, `player_html` and `video_cards_html` are side by side.
+        // Is `{{CONTENT}}` inside `<div class="row g-4">` in our `website/index.html`?
+        // Yes! So for `has_active`, the `<div class="row">` inside `<div class="row g-4">` might be weird but acceptable if we use `col-12`.
+        // Let's just output `video_cards_html` for the `else` block.
+        video_cards_html
     };
 
     let local_ip_addr = local_ip()
@@ -372,6 +449,8 @@ pub async fn home_page_handler(
         .replace("{{LOCAL_IP}}", &local_ip_addr)
         .replace("{{PORT}}", &port.to_string())
         .replace("{{TAG_FILTERS}}", &tag_filters_html)
+        .replace("{{ACTIVE_HOME}}", "active")
+        .replace("{{ACTIVE_EXPLORER}}", "")
         .replace("{{CONTENT}}", &main_content_html);
 
     Html(full_html)
