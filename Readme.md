@@ -1,7 +1,6 @@
 # 🎬 DropTube
-[![Language](https://shields.io)](https://rust-lang.org)
-[![Framework](https://shields.io)](https://github.com)
-[![Runtime](https://shields.io)](https://tokio.rs)
+
+> A stateless, high-performance command-line utility that transforms any local directory into a touch-optimized, mobile streaming interface over your local network. Zero databases. Zero configuration.
 
 [![Language](https://shields.io/badge/Language-Rust-orange.svg)](https://rust-lang.org)
 [![Framework](https://shields.io/badge/Framework-Axum-blue.svg)](https://github.com/tokio-rs/axum)
