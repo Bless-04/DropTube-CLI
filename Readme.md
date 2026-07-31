@@ -26,5 +26,56 @@ droptube.exe C:\Users\YourName\Movies
 
 If no directory argument is passed, DropTube safely defaults to serving your current active terminal directory (`.`).
 
+### Command Line Options
+
+DropTube comes with configuration flags to customize its behavior:
+
+```bash
+Usage: droptube [OPTIONS] [PATH]
+
+Arguments:
+  [PATH]
+          Root path for files (default: current directory) [default: ./]
+
+Options:
+  -d, --depth <MAX_DEPTH>
+          Maximum subfolder depth to recurse into.
+          `0` = current directory only, `255` = unlimited (default: `0`). [default: 0]
+
+  -p, --port <PORT>
+          Explicit port to listen on. If not provided, defaults to 8081 and scans upward automatically if the port is in use.
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+```
+
+#### Example Usage
+```bash
+# Serve movies recursively from subfolders on port 9000
+droptube --depth 255 --port 9000 /path/to/movies
+```
+
+---
+
+## 🏷️ Naming Conventions & Metadata
+
+DropTube extracts optional metadata directly from the filename string.
+
+* **Rating:** Prefix the filename with `[1]` to `[5]` to give it a star rating.
+* **Tags:** Prefix the filename with a comma-separated bracket array like `[action,drama]` to tag it.
+* **Display Name:** Underscores (`_`) and dots (`.`) are automatically replaced with spaces to format the display name beautifully.
+* **Thumbnails:** If an image file (e.g., `.jpg`, `.png`, `.webp`) shares the exact same base name as the video file in the same directory (e.g., `video.mp4` and `video.jpg`), DropTube will automatically pair them and serve the image as the video thumbnail.
+
+**Example:**
+`[5] [sci-fi,action] interstellar_movie.mkv`
+* **Rating:** ★★★★★
+* **Tags:** Sci-Fi, Action
+* **Display Name:** "interstellar movie"
+
+---
+
 ---
 * **Language:** Rust (2024 Edition)
