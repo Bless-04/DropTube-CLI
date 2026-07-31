@@ -78,4 +78,12 @@ DropTube extracts optional metadata directly from the filename string.
 ---
 
 ---
+
+## ⚙️ Tech Stack & Dependencies
+
 * **Language:** Rust (2024 Edition)
+* **CLI Parser:** [Clap v4](https://github.com/clap-rs/clap) - Robust and feature-rich argument parser.
+* **Web Framework:** [Axum v0.8](https://github.com/tokio-rs/axum) - Ergonomic, routing-centric web framework backed by the Tokio team.
+* **Asynchronous Runtime:** [Tokio v1](https://github.com/tokio-rs/tokio) - Industry standard event-driven architecture for non-blocking I/O.
+* **Filesystem Routing:** [Tower-HTTP v0.7](https://github.com/tower-rs/tower-http) - Highly optimized static asset serving utilities handling partial block mapping.
+* **Frontend:** Tailwind CSS (via CDN compilation) - Minimal, responsive styles injected dynamically into single-page templates.
