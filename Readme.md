@@ -2,6 +2,10 @@
 [![Language](https://shields.io)](https://rust-lang.org)
 [![Framework](https://shields.io)](https://github.com)
 [![Runtime](https://shields.io)](https://tokio.rs)
+
+[![Language](https://shields.io/badge/Language-Rust-orange.svg)](https://rust-lang.org)
+[![Framework](https://shields.io/badge/Framework-Axum-blue.svg)](https://github.com/tokio-rs/axum)
+[![Runtime](https://shields.io/badge/Runtime-Tokio-purple.svg)](https://tokio.rs)
 ### Installation
 Ensure you have the Rust toolchain installed, clone the repository, and build the release binary:
 
