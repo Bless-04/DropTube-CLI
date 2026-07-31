@@ -187,7 +187,7 @@ async fn explorer_handler(
                     r#"
                     <tr class="border-b border-zinc-800 hover:bg-zinc-900/50 transition-colors">
                         <td class="px-4 py-3 font-medium text-zinc-300">
-                            <a href="/video/{}" target="_blank" class="hover:text-red-500 flex items-center gap-2">
+                            <a href="/video/{}" target="_parent" class="hover:text-red-500 flex items-center gap-2">
                                 📄 {}
                             </a>
                         </td>
