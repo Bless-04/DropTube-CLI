@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 /// Represents the supported video containers/formats
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VideoFormat {
@@ -12,6 +10,7 @@ pub enum VideoFormat {
 }
 
 impl VideoFormat {
+    /// Returns the `VideoFormat` for the given file extension, or `None` if unsupported.
     pub fn from_ext(ext: &str) -> Option<Self> {
         match ext.to_lowercase().as_str() {
             "mp4" => Some(Self::Mp4),
@@ -24,6 +23,7 @@ impl VideoFormat {
         }
     }
 
+    /// Returns the canonical lowercase extension string for this format.
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Mp4 => "mp4",
@@ -48,6 +48,8 @@ pub enum Rating {
 }
 
 impl Rating {
+    /// Converts a `u8` in the range 1–5 to the corresponding `Rating` variant.
+    /// Any value outside that range maps to `Rating::Unrated`.
     pub fn from_u8(val: u8) -> Self {
         match val {
             1 => Self::OneStar,
@@ -59,6 +61,7 @@ impl Rating {
         }
     }
 
+    /// Returns a star-glyph string representing this rating.
     pub fn as_stars(&self) -> &'static str {
         match self {
             Self::Unrated => "☆☆☆☆☆",
@@ -70,12 +73,13 @@ impl Rating {
         }
     }
 
+    /// Returns `true` if this is any rating other than `Unrated`.
     pub fn is_rated(&self) -> bool {
         !matches!(self, Self::Unrated)
     }
 }
 
-/// Represents categories/topics tags for video grouping
+/// Represents categories/topic tags for video grouping
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Tag {
     Action,
@@ -89,7 +93,10 @@ pub enum Tag {
 }
 
 impl Tag {
-    pub fn from_str(s: &str) -> Self {
+    /// Parses a tag from a string slice, case-insensitively.
+    ///
+    /// This is an infallible conversion; unrecognised strings become [`Tag::Other`].
+    pub fn parse(s: &str) -> Self {
         match s.to_lowercase().trim() {
             "action" => Self::Action,
             "comedy" => Self::Comedy,
@@ -102,6 +109,7 @@ impl Tag {
         }
     }
 
+    /// Returns the canonical display string for this tag.
     pub fn as_str(&self) -> &str {
         match self {
             Self::Action => "Action",
@@ -116,14 +124,23 @@ impl Tag {
     }
 }
 
+/// A video file discovered during directory scanning.
 #[derive(Debug, Clone)]
 pub struct VideoFile {
+    /// Web-friendly relative path used as the streaming URL key.
     pub file_name: String,
+    /// Human-readable title derived from the filename.
     pub display_name: String,
+    /// File size in megabytes.
     pub file_size_mb: u64,
+    /// Unix modification timestamp in seconds.
     pub unix_timestamp: u64,
+    /// Container format of the video.
     pub format: VideoFormat,
+    /// Star rating parsed from the filename prefix.
     pub rating: Rating,
+    /// Topic tags parsed from the filename.
     pub tags: Vec<Tag>,
+    /// Relative path to a sidecar thumbnail image, if found.
     pub thumbnail_path: Option<String>,
 }

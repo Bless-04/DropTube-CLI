@@ -1,9 +1,11 @@
-//#![deny(missing_docs)] todo when working as expected impl this
-
-/// crate for config 
+/// module for config
 pub mod config;
 
-/// crate for stateful models 
+/// module for stateful models
 pub mod models;
+
+/// module for axum routing and endpoint handling
 pub mod server;
+
+/// module for functions to make life easier
 pub mod utils;

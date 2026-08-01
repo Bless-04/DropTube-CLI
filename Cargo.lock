@@ -306,7 +306,6 @@ dependencies = [
  "log",
  "percent-encoding",
  "serde",
- "serde_json",
  "stderrlog",
  "tokio",
  "tower-http",

@@ -1,26 +1,38 @@
 name: DropTube CI
 
 on:
-  push:
-    paths:
-      - 'src/**'
-  pull_request:
-    paths:
-      - 'src/**'
-  workflow_dispatch:
-    
+    push:
+        branches: [master, stable]
+        paths:
+            - "src/**"
+            - "Cargo.toml"
+            - "Cargo.lock"
+    pull_request:
+        branches: [master, stable]
+        paths:
+            - "src/**"
+            - "Cargo.toml"
+            - "Cargo.lock"
+    workflow_dispatch:
 
 env:
-  CARGO_TERM_COLOR: always
+    CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+    build:
+        runs-on: ubuntu-latest
+        name: Build and Test
+        steps:
+            - uses: actions/checkout@v7
+            - name: Build
+              run: cargo build --verbose
 
-    runs-on: ubuntu-latest
+            - uses: taiki-e/install-action@nextest
+            - name: Run Tests
+              run: cargo nextest run --profile ci
 
-    steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --verbose
-    - name: Tests
-      run: cargo test --verbose
+            - name: Publish Test Summary
+              if: success() || failure() # run even if tests failed but skip if cancelled
+              uses: mikepenz/action-junit-report@v6
+              with:
+                  report_paths: "target/nextest/ci/junit.xml"

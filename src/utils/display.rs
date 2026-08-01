@@ -1,25 +1,25 @@
 use std::path::Display;
 
-pub fn serving_dir(canonical_dir: Display) {
-    println!(
-        "📂 Serving Directory : \x1b[1;34m{}\x1b[0m",
-        canonical_dir
-    );
+/// Prints the canonical directory being served.
+pub fn serving_dir(canonical_dir: Display<'_>) {
+    println!("📂 Serving Directory : \x1b[1;34m{}\x1b[0m", canonical_dir);
 }
 
-
-/// Displays the scanning mode
-pub fn scanning_mode(recurse: bool) {
-    println!(
-        "⚙️  Scanning Mode     : \x1b[1;33m{}\x1b[0m",
-        if recurse {
-            "Recursive"
-        } else {
-            "Immediate Directory Only"
-        }
-    );
+/// Prints the scanning depth to the console.
+///
+/// - `0` means top-level only (no subdirectory recursion).
+/// - `1–254` means recurse up to that many levels deep.
+/// - `255` means unlimited recursion.
+pub fn scanning_mode(depth: u8) {
+    let mode = match depth {
+        0 => "Immediate Directory Only (depth: 0)".to_string(),
+        u8::MAX => "Recursive — Unlimited Depth".to_string(),
+        n => format!("Recursive — Max Depth: {n}"),
+    };
+    println!("⚙️  Scanning Mode     : \x1b[1;33m{mode}\x1b[0m");
 }
 
+/// Prints the local and LAN access URLs.
 pub fn local_urls(local_ip_addr: String, port: u16) {
     println!(
         "🚀 Local Access      : \x1b[1;35mhttp://localhost:{}\x1b[0m",
