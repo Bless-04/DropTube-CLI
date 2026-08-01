@@ -27,5 +27,6 @@ jobs:
             - name: Build
               run: cargo build --verbose
 
+            - uses: taiki-e/install-action@nextest
             - name: Run Tests
               run: cargo nextest run --reporter=github >> $GITHUB_STEP_SUMMARY
