@@ -24,10 +24,9 @@ jobs:
         name: Build and Test
         steps:
             - uses: actions/checkout@v7
-            - uses: taiki-e/install-action@nextest
-
             - name: Build
               run: cargo build --verbose
 
+            - uses: taiki-e/install-action@nextest
             - name: Run Tests
               run: cargo nextest run --reporter GitHub
