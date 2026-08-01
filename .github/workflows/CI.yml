@@ -1,26 +1,30 @@
 name: DropTube CI
 
 on:
-  push:
-    paths:
-      - 'src/**'
-  pull_request:
-    paths:
-      - 'src/**'
-  workflow_dispatch:
-    
+    push:
+        branches: [master, stable]
+        paths:
+            - "src/**"
+            - "Cargo.toml"
+            - "Cargo.lock"
+    pull_request:
+        branches: [master, stable]
+        paths:
+            - "src/**"
+            - "Cargo.toml"
+            - "Cargo.lock"
+    workflow_dispatch:
 
 env:
-  CARGO_TERM_COLOR: always
+    CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+    build:
+        runs-on: ubuntu-latest
 
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --verbose
-    - name: Tests
-      run: cargo test --verbose
+        steps:
+            - uses: actions/checkout@v7
+            - name: Build
+              run: cargo build --verbose
+            - name: Tests
+              run: cargo test --verbose
