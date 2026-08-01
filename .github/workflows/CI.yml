@@ -1,18 +1,8 @@
 name: DropTube CI
 
 on:
-    push:
-        branches: [master, stable]
-        paths:
-            - "src/**"
-            - "Cargo.toml"
-            - "Cargo.lock"
     pull_request:
         branches: [master, stable]
-        paths:
-            - "src/**"
-            - "Cargo.toml"
-            - "Cargo.lock"
     workflow_dispatch:
 
 env:
