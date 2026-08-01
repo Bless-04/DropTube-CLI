@@ -29,4 +29,10 @@ jobs:
 
             - uses: taiki-e/install-action@nextest
             - name: Run Tests
-              run: cargo nextest run --reporter=github >> $GITHUB_STEP_SUMMARY
+              run: cargo nextest run --profile ci
+
+            - name: Publish Test Summary
+              if: success() || failure() # run even if tests failed but skip if cancelled
+              uses: mikepenz/action-junit-report@v6
+              with:
+                  report_paths: "target/nextest/ci/junit.xml"
