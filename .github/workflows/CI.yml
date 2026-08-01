@@ -27,6 +27,14 @@ jobs:
             - name: Build
               run: cargo build --verbose
 
-            - uses: taiki-e/install-action@nextest
+            - name: Install cargo-nextest
+              uses: taiki-e/install-action@nextest
+
             - name: Run Tests
-              run: cargo nextest run -- --reporter GitHub
+              run: cargo nextest run -- --reporter junit --junit-path target/nextest-reports/junit.xml
+
+            - name: Publish Test Summary
+              uses: test-summary/action@v2
+              with:
+                  paths: target/nextest-reports/junit.xml
+              if: always()
