@@ -27,14 +27,5 @@ jobs:
             - name: Build
               run: cargo build --verbose
 
-            - name: Install cargo-nextest
-              uses: taiki-e/install-action@nextest
-
             - name: Run Tests
-              run: cargo nextest run --reporter junit --junit-path target/nextest-reports/junit.xml
-
-            - name: Publish Test Summary
-              uses: test-summary/action@v2
-              with:
-                  paths: target/nextest-reports/junit.xml
-              if: always()
+              run: cargo nextest run --reporter=github >> $GITHUB_STEP_SUMMARY
