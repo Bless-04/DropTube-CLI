@@ -31,7 +31,7 @@ jobs:
               uses: taiki-e/install-action@nextest
 
             - name: Run Tests
-              run: cargo nextest run -- --reporter junit --junit-path target/nextest-reports/junit.xml
+              run: cargo nextest run --reporter junit --junit-path target/nextest-reports/junit.xml
 
             - name: Publish Test Summary
               uses: test-summary/action@v2
