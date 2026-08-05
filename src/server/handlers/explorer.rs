@@ -23,7 +23,7 @@ pub struct ExplorerTemplate {
 }
 
 /// Explorer Root routing helper
-pub async fn explorer_root_handler(State(state): State<AppState>) -> impl IntoResponse {
+pub async fn explorer_root_handler(State(state): State<AppState>) -> Result<Response, TemplateError> {
     explorer_handler(State(state), Path(String::new())).await
 }
 
@@ -31,7 +31,7 @@ pub async fn explorer_root_handler(State(state): State<AppState>) -> impl IntoRe
 pub async fn explorer_path_handler(
     State(state): State<AppState>,
     Path(path): Path<String>,
-) -> impl IntoResponse {
+) -> Result<Response, TemplateError> {
     explorer_handler(State(state), Path(path)).await
 }
 
