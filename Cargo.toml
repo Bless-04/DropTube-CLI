@@ -13,6 +13,7 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4.33"
 stderrlog = "0.6"
 clap = { version = "4.6.4", features = ["derive"] }
+askama = "0.16.0"
 
 [lints.rust]
 unsafe_code = "forbid"
