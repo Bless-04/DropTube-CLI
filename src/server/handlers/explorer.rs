@@ -49,20 +49,20 @@ async fn explorer_handler(
     let target_path = state.movie_directory.join(decoded_sub_path.as_ref());
     // 3. Prevent path traversal attack
     if !target_path.starts_with(&state.movie_directory) {
-        return (
+        return Ok((
             StatusCode::FORBIDDEN,
             Html("<h1>403 Forbidden</h1><p>Directory traversal access is denied.</p>".to_string()),
         )
-            .into_response();
+            .into_response());
     }
 
     // 4. Check existence
     if !target_path.exists() {
-        return (
+        return Ok((
             StatusCode::NOT_FOUND,
             Html("<h1>404 Not Found</h1><p>File or folder does not exist.</p>".to_string()),
         )
-            .into_response();
+            .into_response());
     }
 
     // 5. Check if Directory or File
@@ -231,59 +231,20 @@ async fn explorer_handler(
             ));
         }
 
-        let explorer_layout = format!(
-            r#"
-            <div class="max-w-7xl mx-auto px-4 py-8">
-                <!-- Navigation Breadcrumbs -->
-                <div class="flex items-center gap-2 text-xs md:text-sm bg-zinc-900/40 border border-zinc-800 rounded-xl px-4 py-3 mb-6">
-                    <span class="text-zinc-500 font-bold uppercase tracking-wider text-[10px] mr-2">path:</span>
-                    {}
-                </div>
-
-                <div class="flex items-center justify-between mb-6">
-                    <h2 class="text-white text-lg md:text-xl font-bold tracking-tight flex items-center gap-2">
-                        <span class="w-1.5 h-6 bg-amber-500 rounded-full"></span>
-                        File Explorer
-                    </h2>
-                    <a href="/" class="inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-700 active:scale-95 text-white font-medium px-4 py-1.5 rounded-full transition-all text-xs">
-                        🎬 Video Mode
-                    </a>
-                </div>
-
-                <!-- Explorer Table -->
-                <div class="bg-[#141414] border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-xs md:text-sm">
-                            <thead class="bg-[#1a1a1a] text-zinc-400 font-bold border-b border-zinc-800 text-[11px] uppercase tracking-wider">
-                                <tr>
-                                    <th class="px-4 py-3.5">Name</th>
-                                    <th class="px-4 py-3.5">Type</th>
-                                    <th class="px-4 py-3.5">Size</th>
-                                    <th class="px-4 py-3.5">Last Modified</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-zinc-900">
-                                {}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-            "#,
-            breadcrumbs_html, entries_html
-        );
-
         let local_ip_addr = local_ip()
             .map(|ip| ip.to_string())
             .unwrap_or_else(|_| "0.0.0.0".to_string());
 
-        let full_html = HTML_SOURCE
-            .replace("{{LOCAL_IP}}", &local_ip_addr)
-            .replace("{{PORT}}", &state.port.to_string())
-            .replace("{{TAG_FILTERS}}", "")
-            .replace("{{CONTENT}}", &explorer_layout);
+        let template = ExplorerTemplate {
+            search_query: String::new(),
+            breadcrumbs_html,
+            entries_html,
+            local_ip: local_ip_addr,
+            port: state.port,
+        };
 
-        Html(full_html).into_response()
+        let full_html = template.render()?;
+        Ok(Html(full_html).into_response())
     } else {
         // Redirect to the static /video endpoint
         let encoded_file = utf8_percent_encode(&decoded_sub_path, NON_ALPHANUMERIC).to_string();
