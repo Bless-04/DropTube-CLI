@@ -453,40 +453,6 @@ pub async fn home_page_handler(
             "#.to_string();
     }
 
-    // Dynamic grid container layout logic
-    let main_content_html = if has_active {
-        format!(
-            r#"
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-7xl mx-auto py-0 md:py-6">
-                {}
-                <div class="lg:col-span-1 p-4 md:p-0 flex flex-col gap-4">
-                    <h3 class="text-white text-base font-bold tracking-tight border-b border-zinc-800 pb-2">Up Next</h3>
-                    <div class="flex flex-col gap-2 overflow-y-auto max-h-[600px] pr-1 scrollbar-thin">
-                        {}
-                    </div>
-                </div>
-            </div>
-            "#,
-            player_html, video_cards_html
-        )
-    } else {
-        format!(
-            r#"
-            <div class="max-w-7xl mx-auto px-4 py-8">
-                <h2 class="text-white text-lg md:text-xl font-bold tracking-tight mb-6 flex items-center gap-2">
-                    <span class="w-1.5 h-6 bg-red-600 rounded-full"></span>
-                    Local Video Feed
-                </h2>
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                    {}
-                </div>
-                {}
-            </div>
-            "#,
-            video_cards_html, pagination_html
-        )
-    };
-
     let local_ip_addr = local_ip()
         .map(|ip| ip.to_string())
         .unwrap_or_else(|_| "0.0.0.0".to_string());
