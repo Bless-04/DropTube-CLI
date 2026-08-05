@@ -21,4 +21,10 @@ pub struct AppState {
 pub struct HomeQuery {
     /// Optional video filename to auto-play on load.
     pub v: Option<String>,
+    /// Current page number (1-indexed). Defaults to 1.
+    pub page: Option<u32>,
+    /// Search query to filter videos by display name.
+    pub search: Option<String>,
+    /// Tag filter to show only videos with this tag.
+    pub tag: Option<String>,
 }

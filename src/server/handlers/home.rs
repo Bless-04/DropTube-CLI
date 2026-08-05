@@ -1,4 +1,4 @@
-use crate::config::constants::HTML_SOURCE;
+use crate::config::constants::{HTML_SOURCE, PAGE_SIZE};
 use crate::models::state::{AppState, HomeQuery};
 use crate::models::video::{Tag, VideoFormat};
 use crate::utils::tailwind;
@@ -32,18 +32,27 @@ pub async fn home_page_handler(
     let mut unique_tags_list: Vec<Tag> = unique_tags.into_iter().collect();
     unique_tags_list.sort_by_key(|t| t.as_str().to_lowercase());
 
+    let search_query = query.search.as_deref().unwrap_or("").trim().to_lowercase();
+    let tag_filter = query.tag.as_deref().unwrap_or("").trim().to_lowercase();
+
     let mut tag_filters_html = String::new();
     for tag in unique_tags_list {
+        let is_active = tag.as_str().to_lowercase() == tag_filter;
+        let btn_class = if is_active {
+            "bg-red-600 text-white font-semibold"
+        } else {
+            "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-normal"
+        };
         tag_filters_html.push_str(&format!(
             r#"
             <button
-                onclick="filterByTag('{}', this)"
-                class="tag-btn bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-normal text-xs px-4 py-1.5 rounded-full active:scale-95 transition-all flex-shrink-0"
+                onclick="filterByTag('{}')"
+                class="tag-btn {} text-xs px-4 py-1.5 rounded-full active:scale-95 transition-all flex-shrink-0"
             >
                 {}
             </button>
             "#,
-            tag.as_str(), tag.as_str()
+            tag.as_str(), btn_class, tag.as_str()
         ));
     }
 
@@ -53,6 +62,28 @@ pub async fn home_page_handler(
         .and_then(|v_name| videos.iter().find(|v| v.file_name == v_name).cloned());
 
     let has_active = active_video.is_some();
+
+    // --- Server-side search & tag filtering ---
+    let filtered_videos: Vec<_> = videos
+        .into_iter()
+        .filter(|v| {
+            let matches_search = search_query.is_empty()
+                || v.display_name.to_lowercase().contains(&search_query);
+            let matches_tag = tag_filter.is_empty()
+                || tag_filter == "all"
+                || v.tags.iter().any(|t| t.as_str().to_lowercase() == tag_filter);
+            matches_search && matches_tag
+        })
+        .collect();
+
+    // --- Pagination ---
+    let total_count = filtered_videos.len();
+    let current_page = query.page.unwrap_or(1).max(1) as usize;
+    let total_pages = if total_count == 0 { 1 } else { (total_count + PAGE_SIZE - 1) / PAGE_SIZE };
+    let current_page = current_page.min(total_pages);
+    let start_idx = (current_page - 1) * PAGE_SIZE;
+    let end_idx = (start_idx + PAGE_SIZE).min(total_count);
+    let page_videos = &filtered_videos[start_idx..end_idx];
 
     // Render Pinned Video Player (HTML5 video tag)
     let player_html = if let Some(ref video) = active_video {
@@ -142,7 +173,7 @@ pub async fn home_page_handler(
 
     // Render Video Cards
     let mut video_cards_html = String::new();
-    for video in &videos {
+    for video in page_videos {
         let encoded_filename = utf8_percent_encode(&video.file_name, NON_ALPHANUMERIC).to_string();
         let is_playing_card = active_video
             .as_ref()
@@ -318,6 +349,98 @@ pub async fn home_page_handler(
         video_cards_html.push_str(&card_class);
     }
 
+    // --- Build pagination controls ---
+    let pagination_html = if total_pages > 1 {
+        let mut pag = String::new();
+        pag.push_str(r#"<div class="flex items-center justify-center gap-2 py-8">"#);
+
+        // Build the base query string for pagination links (preserving search & tag)
+        let mut base_query = String::new();
+        if !search_query.is_empty() {
+            base_query.push_str(&format!("&search={}", utf8_percent_encode(&search_query, NON_ALPHANUMERIC)));
+        }
+        if !tag_filter.is_empty() && tag_filter != "all" {
+            base_query.push_str(&format!("&tag={}", utf8_percent_encode(&tag_filter, NON_ALPHANUMERIC)));
+        }
+
+        // Previous button
+        if current_page > 1 {
+            pag.push_str(&format!(
+                r#"<a href="/?page={}{base_query}" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition-colors">← Prev</a>"#,
+                current_page - 1
+            ));
+        } else {
+            pag.push_str(r#"<span class="px-3 py-1.5 rounded-lg bg-zinc-900 text-zinc-600 text-sm font-medium cursor-not-allowed">← Prev</span>"#);
+        }
+
+        // Page numbers (show up to 7 pages with ellipsis)
+        let range_start = if current_page <= 3 { 1 } else { current_page - 2 };
+        let range_end = (range_start + 4).min(total_pages);
+        let range_start = if range_end == total_pages && total_pages >= 5 { total_pages - 4 } else { range_start };
+
+        if range_start > 1 {
+            pag.push_str(&format!(
+                r#"<a href="/?page=1{base_query}" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition-colors">1</a>"#
+            ));
+            if range_start > 2 {
+                pag.push_str(r#"<span class="text-zinc-600 text-sm px-1">…</span>"#);
+            }
+        }
+
+        for p in range_start..=range_end {
+            if p == current_page {
+                pag.push_str(&format!(
+                    r#"<span class="px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm font-bold shadow-lg shadow-red-600/20">{}</span>"#,
+                    p
+                ));
+            } else {
+                pag.push_str(&format!(
+                    r#"<a href="/?page={}{base_query}" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition-colors">{}</a>"#,
+                    p, p
+                ));
+            }
+        }
+
+        if range_end < total_pages {
+            if range_end < total_pages - 1 {
+                pag.push_str(r#"<span class="text-zinc-600 text-sm px-1">…</span>"#);
+            }
+            pag.push_str(&format!(
+                r#"<a href="/?page={}{base_query}" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition-colors">{}</a>"#,
+                total_pages, total_pages
+            ));
+        }
+
+        // Next button
+        if current_page < total_pages {
+            pag.push_str(&format!(
+                r#"<a href="/?page={}{base_query}" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition-colors">Next →</a>"#,
+                current_page + 1
+            ));
+        } else {
+            pag.push_str(r#"<span class="px-3 py-1.5 rounded-lg bg-zinc-900 text-zinc-600 text-sm font-medium cursor-not-allowed">Next →</span>"#);
+        }
+
+        pag.push_str("</div>");
+
+        // Results count
+        pag.push_str(&format!(
+            r#"<p class="text-center text-xs text-zinc-500 pb-4">Showing {}-{} of {} videos</p>"#,
+            if total_count > 0 { start_idx + 1 } else { 0 },
+            end_idx,
+            total_count
+        ));
+
+        pag
+    } else if total_count > 0 {
+        format!(
+            r#"<p class="text-center text-xs text-zinc-500 py-4">{} video(s)</p>"#,
+            total_count
+        )
+    } else {
+        String::new()
+    };
+
     if video_cards_html.is_empty() {
         video_cards_html = r#"
             <div class="col-span-full flex flex-col items-center justify-center py-24 px-4 text-center">
@@ -354,12 +477,13 @@ pub async fn home_page_handler(
                     <span class="w-1.5 h-6 bg-red-600 rounded-full"></span>
                     Local Video Feed
                 </h2>
-                <div class="grid grid-cols-1 sm::grid-cols-2 md::grid-cols-3 lg:grid-cols-4 gap-6">
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {}
                 </div>
+                {}
             </div>
             "#,
-            video_cards_html
+            video_cards_html, pagination_html
         )
     };
 
@@ -367,11 +491,18 @@ pub async fn home_page_handler(
         .map(|ip| ip.to_string())
         .unwrap_or_else(|_| "0.0.0.0".to_string());
 
+    let all_btn_class = if tag_filter.is_empty() || tag_filter == "all" {
+        "bg-red-600 text-white font-semibold"
+    } else {
+        "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-normal"
+    };
+
     // Replace template variables
     let full_html = HTML_SOURCE
         .replace("{{LOCAL_IP}}", &local_ip_addr)
         .replace("{{PORT}}", &port.to_string())
         .replace("{{TAG_FILTERS}}", &tag_filters_html)
+        .replace("{{ALL_BTN_CLASS}}", all_btn_class)
         .replace("{{CONTENT}}", &main_content_html);
 
     Html(full_html)

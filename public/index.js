@@ -1,7 +1,5 @@
 console.log('index.js loaded');
 alert("Js Loaded.");
-// Active tag filter tracking
-let activeTag = 'all';
 
 // Dynamic relative time calculator
 function getRelativeTime(timestamp) {
@@ -19,6 +17,7 @@ function getRelativeTime(timestamp) {
     return months + 'mo ago';
 }
 
+// Update all relative time elements on page load
 document.querySelectorAll('.time-elapsed').forEach(el => {
     const timestamp = parseInt(el.getAttribute('data-timestamp'));
     if (!isNaN(timestamp)) {
@@ -26,46 +25,38 @@ document.querySelectorAll('.time-elapsed').forEach(el => {
     }
 });
 
-// Tag filter action
-function filterByTag(tag, element) {
-    activeTag = tag;
+// --- Server-side search (debounced URL navigation) ---
+let searchTimeout = null;
 
-    // Reset and update tag button states
-    document.querySelectorAll('.tag-btn').forEach(btn => {
-        btn.classList.remove('bg-red-600', 'text-white', 'font-semibold');
-        btn.classList.add('bg-zinc-800', 'text-zinc-300', 'font-normal');
-    });
-
-    if (element) {
-        element.classList.remove('bg-zinc-800', 'text-zinc-300', 'font-normal');
-        element.classList.add('bg-red-600', 'text-white', 'font-semibold');
-    }
-
-    filterVideos();
-}
-
-// Search & Tag composite filter
-function filterVideos() {
-    const query = document.getElementById('search').value.toLowerCase().trim();
-    const cards = document.querySelectorAll('.video-card');
-
-    cards.forEach(card => {
-        const title = card.getAttribute('data-title').toLowerCase();
-        const tagsRaw = card.getAttribute('data-tags') || '';
-        const tags = tagsRaw.toLowerCase().split(',').map(t => t.trim());
-
-        const matchesQuery = title.includes(query);
-        const matchesTag = activeTag === 'all' || tags.includes(activeTag.toLowerCase());
-
-        if (matchesQuery && matchesTag) {
-            card.style.display = '';
+function handleSearch(value) {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (value.trim()) {
+            params.set('search', value.trim());
         } else {
-            card.style.display = 'none';
+            params.delete('search');
         }
-    });
+        params.set('page', '1');
+        params.delete('v'); // exit player view on search
+        window.location.href = '/?' + params.toString();
+    }, 400);
 }
 
-// Trigger manual background index scan
+// --- Server-side tag filter (URL navigation) ---
+function filterByTag(tag) {
+    const params = new URLSearchParams(window.location.search);
+    if (tag === 'all' || !tag) {
+        params.delete('tag');
+    } else {
+        params.set('tag', tag);
+    }
+    params.set('page', '1');
+    params.delete('v'); // exit player view on tag filter
+    window.location.href = '/?' + params.toString();
+}
+
+// --- Refresh index action ---
 function refreshIndex(btn) {
     const icon = document.getElementById('refresh-icon');
     const text = document.getElementById('refresh-text');
