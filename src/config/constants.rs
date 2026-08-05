@@ -9,5 +9,3 @@ pub const PAGE_SIZE: usize = 24;
 /// regardless of where the cursor is positioned.
 pub const CLEAR_LINE: &str = "\r\x1b[2K";
 
-/// The file path of the html page
-pub const HTML_SOURCE: &str = include_str!("../../public/index.html");
