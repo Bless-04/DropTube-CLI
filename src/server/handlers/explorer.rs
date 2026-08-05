@@ -39,7 +39,7 @@ pub async fn explorer_path_handler(
 async fn explorer_handler(
     State(state): State<AppState>,
     Path(sub_path): Path<String>,
-) -> impl IntoResponse {
+) -> Result<Response, TemplateError> {
     // 1. Percent-decode the sub-path
     let decoded_sub_path = percent_encoding::percent_decode_str(&sub_path)
         .decode_utf8()
@@ -287,6 +287,6 @@ async fn explorer_handler(
     } else {
         // Redirect to the static /video endpoint
         let encoded_file = utf8_percent_encode(&decoded_sub_path, NON_ALPHANUMERIC).to_string();
-        Redirect::temporary(&format!("/video/{}", encoded_file)).into_response()
+        Ok(Redirect::temporary(&format!("/video/{}", encoded_file)).into_response())
     }
 }
