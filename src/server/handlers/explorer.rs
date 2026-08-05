@@ -1,15 +1,26 @@
-use crate::config::constants::HTML_SOURCE;
 use crate::models::state::AppState;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::{Html, IntoResponse, Redirect},
+    response::{Html, IntoResponse, Redirect, Response},
 };
 use local_ip_address::local_ip;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use std::fs;
 use std::path::Path as StdPath;
 use std::time::SystemTime;
+use askama::Template;
+use crate::server::handlers::TemplateError;
+
+#[derive(Template)]
+#[template(path = "explorer.html")]
+pub struct ExplorerTemplate {
+    pub search_query: String,
+    pub breadcrumbs_html: String,
+    pub entries_html: String,
+    pub local_ip: String,
+    pub port: u16,
+}
 
 /// Explorer Root routing helper
 pub async fn explorer_root_handler(State(state): State<AppState>) -> impl IntoResponse {
