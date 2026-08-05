@@ -1,5 +1,4 @@
 console.log('index.js loaded');
-alert("Js Loaded.");
 
 // Dynamic relative time calculator
 function getRelativeTime(timestamp) {
