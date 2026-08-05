@@ -32,7 +32,8 @@
             </div>
             <label for="search"></label><input type="text" id="search" placeholder="Search videos..."
                                                class="w-full bg-[#181818] border border-zinc-800 text-zinc-200 placeholder-zinc-500 pl-10 pr-4 py-1.5 rounded-full text-xs md:text-sm focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all"
-                                               oninput="filterVideos()" />
+                                               value="{{SEARCH_VALUE}}"
+                                               oninput="handleSearch(this.value)" />
         </div>
 
         <!-- Navigation Actions -->
@@ -66,8 +67,8 @@
     <!-- Horizontal Category Filter Tags -->
     <div
         class="bg-[#0f0f0f] border-b border-zinc-900 py-3 px-4 flex gap-2 overflow-x-auto scrollbar-thin max-w-7xl mx-auto w-full select-none">
-        <button onclick="filterByTag('all', this)"
-            class="tag-btn bg-red-600 text-white font-semibold text-xs px-4 py-1.5 rounded-full active:scale-95 transition-all flex-shrink-0">
+        <button onclick="filterByTag('all')"
+            class="tag-btn {{ALL_BTN_CLASS}} text-xs px-4 py-1.5 rounded-full active:scale-95 transition-all flex-shrink-0">
             All
         </button>
         {{TAG_FILTERS}}
