@@ -1,20 +1,36 @@
-use crate::config::constants::{HTML_SOURCE, PAGE_SIZE};
+use crate::config::constants::PAGE_SIZE;
 use crate::models::state::{AppState, HomeQuery};
 use crate::models::video::{Tag, VideoFormat};
 use crate::utils::tailwind;
 use axum::{
     extract::{Query, State},
-    response::Html,
+    response::{Html, IntoResponse},
 };
 use local_ip_address::local_ip;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use askama::Template;
+use crate::server::handlers::TemplateError;
+
+#[derive(Template)]
+#[template(path = "home.html")]
+pub struct HomeTemplate {
+    pub search_query: String,
+    pub all_btn_class: String,
+    pub tag_filters_html: String,
+    pub has_active: bool,
+    pub player_html: String,
+    pub video_cards_html: String,
+    pub pagination_html: String,
+    pub local_ip: String,
+    pub port: u16,
+}
 
 /// Handles homepage requests. Lists video files in the served directory.
 /// Renders a dynamic player if the query param `v` is set.
 pub async fn home_page_handler(
     State(state): State<AppState>,
     Query(query): Query<HomeQuery>,
-) -> Html<String> {
+) -> Result<impl IntoResponse, TemplateError> {
     let port = state.port;
 
     // getting read lock on the cached index immediately
@@ -463,13 +479,18 @@ pub async fn home_page_handler(
         "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-normal"
     };
 
-    // Replace template variables
-    let full_html = HTML_SOURCE
-        .replace("{{LOCAL_IP}}", &local_ip_addr)
-        .replace("{{PORT}}", &port.to_string())
-        .replace("{{TAG_FILTERS}}", &tag_filters_html)
-        .replace("{{ALL_BTN_CLASS}}", all_btn_class)
-        .replace("{{CONTENT}}", &main_content_html);
+    let template = HomeTemplate {
+        search_query: search_query.clone(),
+        all_btn_class: all_btn_class.to_string(),
+        tag_filters_html,
+        has_active,
+        player_html,
+        video_cards_html,
+        pagination_html,
+        local_ip: local_ip_addr,
+        port,
+    };
 
-    Html(full_html)
+    let full_html = template.render()?;
+    Ok(Html(full_html).into_response())
 }
