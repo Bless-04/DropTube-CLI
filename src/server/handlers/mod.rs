@@ -1,3 +1,4 @@
+mod assets;
 pub mod explorer;
 pub mod home;
 pub mod scan;
@@ -13,11 +14,7 @@ pub struct TemplateError(pub askama::Error);
 impl IntoResponse for TemplateError {
     fn into_response(self) -> Response {
         error!("Template rendering error: {}", self.0);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Internal Server Error",
-        )
-            .into_response()
+        StatusCode::INTERNAL_SERVER_ERROR.into_response()
     }
 }
 
