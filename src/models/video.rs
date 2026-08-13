@@ -10,6 +10,9 @@ pub enum VideoFormat {
 }
 
 impl VideoFormat {
+    /// Supported extensions for [VideoFormat]
+    pub const SUPPORTED_EXTS: &'static [&'static str] = &["mp4", "mkv", "webm","mov","avi","m4v"];
+    
     /// Returns the `VideoFormat` for the given file extension, or `None` if unsupported.
     pub fn from_ext(ext: &str) -> Option<Self> {
         match ext.to_lowercase().as_str() {
