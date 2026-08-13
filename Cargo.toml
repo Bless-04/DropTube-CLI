@@ -15,6 +15,7 @@ stderrlog = "0.6"
 clap = { version = "4.6.4", features = ["derive"] }
 askama = "0.16.0"
 rust-embed = "8.12.0"
+mime_guess = "2.0.5"
 
 [lints.rust]
 unsafe_code = "forbid"

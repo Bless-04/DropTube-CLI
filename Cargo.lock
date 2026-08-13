@@ -411,6 +411,7 @@ dependencies = [
  "clap",
  "local-ip-address",
  "log",
+ "mime_guess",
  "percent-encoding",
  "rust-embed",
  "serde",
