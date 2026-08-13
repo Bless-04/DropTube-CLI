@@ -175,12 +175,11 @@ async fn explorer_handler(
                     .map(|s| s.to_lowercase())
                     .unwrap_or_default();
 
-                let type_str =
-                    if ["mp4", "mkv", "webm", "mov", "avi", "m4v"].contains(&ext.as_str()) {
-                        format!("Video ({})", ext)
-                    } else {
-                        ext.clone()
-                    };
+                let type_str = if VideoFormat::SUPPORTED_EXTS.contains(&ext.as_str()) {
+                    format!("Video ({})", ext)
+                } else {
+                    ext.clone()
+                };
 
                 let time_str = modified
                     .ok()
