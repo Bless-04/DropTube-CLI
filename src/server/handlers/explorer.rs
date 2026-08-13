@@ -1,4 +1,7 @@
 use crate::models::state::AppState;
+use crate::models::video::VideoFormat;
+use crate::server::handlers::TemplateError;
+use askama::Template;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -9,8 +12,6 @@ use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use std::fs;
 use std::path::Path as StdPath;
 use std::time::SystemTime;
-use askama::Template;
-use crate::server::handlers::TemplateError;
 
 #[derive(Template)]
 #[template(path = "explorer.html")]
@@ -23,7 +24,9 @@ pub struct ExplorerTemplate {
 }
 
 /// Explorer Root routing helper
-pub async fn explorer_root_handler(State(state): State<AppState>) -> Result<Response, TemplateError> {
+pub async fn explorer_root_handler(
+    State(state): State<AppState>,
+) -> Result<Response, TemplateError> {
     explorer_handler(State(state), Path(String::new())).await
 }
 
@@ -40,14 +43,14 @@ async fn explorer_handler(
     State(state): State<AppState>,
     Path(sub_path): Path<String>,
 ) -> Result<Response, TemplateError> {
-    // 1. Percent-decode the sub-path
+    // Percent-decode the sub-path
     let decoded_sub_path = percent_encoding::percent_decode_str(&sub_path)
         .decode_utf8()
-        .unwrap_or(std::borrow::Cow::Borrowed(""));
+        .unwrap_or_else(|_| std::borrow::Cow::Borrowed(""));
 
-    // 2. Safe path join
+    // Safe path join
     let target_path = state.movie_directory.join(decoded_sub_path.as_ref());
-    // 3. Prevent path traversal attack
+    // Prevent path traversal attack
     if !target_path.starts_with(&state.movie_directory) {
         return Ok((
             StatusCode::FORBIDDEN,
@@ -56,7 +59,7 @@ async fn explorer_handler(
             .into_response());
     }
 
-    // 4. Check existence
+    //  Check exists
     if !target_path.exists() {
         return Ok((
             StatusCode::NOT_FOUND,
@@ -65,7 +68,7 @@ async fn explorer_handler(
             .into_response());
     }
 
-    // 5. Check if Directory or File
+    // Check if Directory or File
     if target_path.is_dir() {
         let mut entries_html = String::new();
 
