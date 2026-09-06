@@ -64,6 +64,9 @@ Options:
 droptube --depth 255 --port 9000 /path/to/movies
 ```
 
+### Optional FFmpeg thumbnails
+
+Thumbnail generation is **off by default**. To enable it, install [FFmpeg](https://ffmpeg.org/download.html) and run:
 ---
 
 ## 🏷️ Naming Conventions & Metadata
