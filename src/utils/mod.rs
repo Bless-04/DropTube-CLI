@@ -6,3 +6,5 @@ pub mod scanner;
 
 /// contains functions related to interacting with tailwind
 pub mod tailwind;
+
+pub mod thumbnails;
