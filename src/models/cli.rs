@@ -16,6 +16,14 @@ pub struct CliArgs {
     #[arg(short = 'p', long = "port")]
     pub port: Option<u16>,
 
+    /// Generate missing thumbnails with FFmpeg. Panics at startup if FFmpeg is unavailable.
+    #[arg(long)]
+    pub generate_thumbnails: bool,
+
+    /// FFmpeg executable to use (otherwise resolved from PATH). Requires --generate-thumbnails.
+    #[arg(long, requires = "generate_thumbnails")]
+    pub ffmpeg_path: Option<PathBuf>,
+
     /// Root path for files (default: current directory).
     #[arg(default_value = "./")]
     pub path: PathBuf,
