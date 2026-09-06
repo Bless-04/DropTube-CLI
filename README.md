@@ -45,6 +45,12 @@ Options:
   -p, --port <PORT>
           Explicit port to listen on. If not provided, defaults to 8081 and scans upward automatically if the port is in use.
 
+      --generate-thumbnails
+          Generate missing thumbnails with FFmpeg. Panics at startup if FFmpeg is unavailable.
+
+      --ffmpeg-path <FFMPEG_PATH>
+          FFmpeg executable to use instead of PATH. Requires --generate-thumbnails.
+
   -h, --help
           Print help (see a summary with '-h')
 
