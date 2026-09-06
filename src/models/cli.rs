@@ -62,6 +62,8 @@ mod tests {
         assert_eq!(args.port, None);
         assert_eq!(args.path, PathBuf::from("./test"));
         assert_eq!(args.max_depth, 0);
+        assert!(!args.generate_thumbnails);
+        assert!(args.ffmpeg_path.is_none());
     }
 
     #[test]
@@ -83,5 +85,19 @@ mod tests {
         let args_result = CliArgs::try_parse_from([EXECUTABLE, "-d", "5", "."]);
         let args = args_result.expect("valid args");
         assert_eq!(args.max_depth, 5);
+    }
+
+    #[test]
+    fn thumbnail_generation_is_explicitly_enabled() {
+        let args = CliArgs::try_parse_from([
+            EXECUTABLE,
+            "--generate-thumbnails",
+            "--ffmpeg-path",
+            "tools/ffmpeg",
+        ])
+        .expect("valid thumbnail options");
+        assert!(args.generate_thumbnails);
+        assert_eq!(args.ffmpeg_path, Some(PathBuf::from("tools/ffmpeg")));
+        assert!(CliArgs::try_parse_from([EXECUTABLE, "--ffmpeg-path", "ffmpeg"]).is_err());
     }
 }
