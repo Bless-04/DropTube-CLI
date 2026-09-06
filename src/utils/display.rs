@@ -1,5 +1,5 @@
-use std::path::Display;
 use log::error;
+use std::path::Display;
 
 /// Prints the canonical directory being served.
 pub fn serving_dir(canonical_dir: Display<'_>) {
