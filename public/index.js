@@ -1,27 +1,21 @@
 console.log('index.js loaded');
 'use strict';
 
-// Dynamic relative time calculator
 function getRelativeTime(timestamp) {
-    const now = Math.floor(Date.now() / 1000);
-    const diff = now - timestamp;
-    if (diff < 0) return 'Just now';
-    if (diff < 60) return 'Just now';
-    const mins = Math.floor(diff / 60);
-    if (mins < 60) return mins + 'm ago';
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return hours + 'h ago';
-    const days = Math.floor(hours / 24);
-    if (days < 30) return days + 'd ago';
-    const months = Math.floor(days / 30);
-    return months + 'mo ago';
+    const difference = Math.max(0, Math.floor(Date.now() / 1000) - timestamp);
+    if (difference < 60) return 'Just now';
+    const units = [[31536000, 'year'], [2592000, 'month'], [86400, 'day'], [3600, 'hour'], [60, 'minute']];
+    for (const [seconds, unit] of units) {
+        const count = Math.floor(difference / seconds);
+        if (count > 0) return `${count} ${unit}${count === 1 ? '' : 's'} ago`;
+    }
+    return 'Just now';
 }
 
-// Update all relative time elements on page load
-document.querySelectorAll('.time-elapsed').forEach(el => {
-    const timestamp = parseInt(el.getAttribute('data-timestamp'));
-    if (!isNaN(timestamp)) {
-        el.textContent = getRelativeTime(timestamp);
+document.querySelectorAll('.time-elapsed').forEach(element => {
+    const timestamp = Number(element.dataset.timestamp);
+    if (Number.isFinite(timestamp) && timestamp > 0) {
+        element.textContent = getRelativeTime(timestamp);
     }
 });
 
