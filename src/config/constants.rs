@@ -8,4 +8,3 @@ pub const PAGE_SIZE: usize = 24;
 /// the current line. `\x1b[2K` (ANSI Erase Line): Wipes out all the text on the current line,
 /// regardless of where the cursor is positioned.
 pub const CLEAR_LINE: &str = "\r\x1b[2K";
-
