@@ -1,3 +1,6 @@
+//! Local video indexing, thumbnail generation, and HTTP streaming for DropTube.
+#![forbid(unsafe_code)]
+
 /// module for config
 pub mod config;
 
