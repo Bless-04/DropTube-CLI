@@ -36,3 +36,11 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         assert!(
             response.headers()[header::CONTENT_TYPE]
+    #[tokio::test]
+    async fn missing_assets_return_not_found() {
+        let response = static_handler(Path("missing.js".to_owned()))
+            .await
+            .into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+}
