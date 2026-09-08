@@ -5,6 +5,9 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const script = fs.readFileSync(path.join(__dirname, '../public/index.js'), 'utf8');
+function setup({ observerAvailable = true, refresh = null } = {}) {
+}
+
 test('offscreen thumbnails stay unloaded until they approach the viewport', () => {
 });
 test('browsers without an observer receive native-lazy image sources', () => {
