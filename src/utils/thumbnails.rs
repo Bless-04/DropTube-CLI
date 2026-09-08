@@ -13,6 +13,8 @@ pub struct ThumbnailGenerator {
 }
 
 impl ThumbnailGenerator {
+    /// The generated path for the thumbnails made by ffmpeg
+    pub const GENERATED_PATH: &str = ".droptube-thumbnails";
     /// Checks that the executable starts and identifies itself as FFmpeg.
     /// Returns an error if it is absent, unusable, or takes more than five seconds.
     pub async fn new(executable: PathBuf) -> io::Result<Self> {
