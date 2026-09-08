@@ -29,4 +29,9 @@ impl ThumbnailGenerator {
         }
         Ok(generator)
     }
+
+    /// Creates a 480×270 JPEG, or reuses one newer than the source video.
+    pub async fn generate_thumbnail(&self, source: &Path) -> io::Result<PathBuf> {
+}
+
 }
