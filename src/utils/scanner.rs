@@ -1,4 +1,5 @@
 use crate::models::video::{Rating, Tag, VideoFile, VideoFormat};
+use crate::utils::thumbnails::ThumbnailGenerator;
 use log::warn;
 use std::fs;
 use std::path::{Path as StdPath, PathBuf};
@@ -120,6 +121,13 @@ pub fn scan_directory(params: &mut ScanDirectoryParams) {
     for entry in entries.flatten() {
         let e_path = entry.path();
 
+        // Skip cache and links: linked directories can loop or leave the library.
+        if entry.file_name().eq(ThumbnailGenerator::GENERATED_PATH)
+            || entry.file_type().is_ok_and(|kind| kind.is_symlink())
+        {
+            continue;
+        }
+
         if e_path.is_dir() {
             if params.should_recurse() {
                 let mut sub_params = ScanDirectoryParams {
@@ -146,7 +154,7 @@ pub fn scan_directory(params: &mut ScanDirectoryParams) {
 
             // Compute web-friendly relative path from base_dir for the streaming URL
             let file_name = e_path
-                .strip_prefix(&base_dir)
+                .strip_prefix(base_dir)
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|_| e_path.to_string_lossy().to_string())
                 .replace('\\', "/");
@@ -160,7 +168,7 @@ pub fn scan_directory(params: &mut ScanDirectoryParams) {
                 test_thumb.set_extension(img_ext);
                 if test_thumb.exists() && test_thumb.is_file() {
                     let rel_thumb = test_thumb
-                        .strip_prefix(&base_dir)
+                        .strip_prefix(base_dir)
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_else(|_| test_thumb.to_string_lossy().to_string())
                         .replace('\\', "/");
