@@ -77,7 +77,7 @@ pub struct ScanDirectoryParams {
 
 impl ScanDirectoryParams {
     /// Image extensions checked when looking for sidecar thumbnails.
-    const THUMBNAIL_EXT: [&'static str; 4] = ["jpg", "jpeg", "png", "webp"];
+    pub const THUMBNAIL_EXT: [&'static str; 4] = ["jpg", "jpeg", "png", "webp"];
 
     /// Creates a root-level scan starting at `root_dir` with the given `max_depth`.
     pub fn new(root_dir: PathBuf, max_depth: u8) -> Self {
