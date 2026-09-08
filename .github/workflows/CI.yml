@@ -18,8 +18,10 @@ jobs:
               run: cargo build --verbose
 
             - uses: taiki-e/install-action@nextest
-            - name: Run Tests
+            - name: Backend Tests
               run: cargo nextest run --profile ci
+            - name: Frontend Tests
+              run: node --test
 
             - name: Publish Test Summary
               if: success() || failure() # run even if tests failed but skip if cancelled
