@@ -15,7 +15,7 @@ use crate::server::handlers::scan::refresh_index_handler;
 pub fn create_router(state: AppState) -> Router {
     let router = Router::new()
         .route("/", get(home_page_handler))
-        .nest_service("/public", ServeDir::new("public"))
+        .route("/public/{*path}", get(handlers::assets::static_handler))
         .route("/refresh", post(refresh_index_handler))
         .route("/explorer", get(explorer_root_handler))
         .route("/explorer/{*path}", get(explorer_path_handler))
