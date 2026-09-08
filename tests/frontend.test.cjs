@@ -47,11 +47,34 @@ test('offscreen thumbnails stay unloaded until they approach the viewport', () =
     assert.equal(browser.images[1].src, undefined);
     assert.equal(browser.watched.has(browser.images[0]), false);
 });
+
 test('browsers without an observer receive native-lazy image sources', () => {
+    const browser = setup({ observerAvailable: false });
+    assert.deepEqual(browser.images.map(image => image.src), ['first.jpg', 'offscreen.jpg']);
 });
+
 test('broken thumbnails fall back to the placeholder', () => {
+    const browser = setup({ observerAvailable: false });
+    browser.images[0].handlers.error();
+    assert.equal(browser.images[0].src, undefined);
+    assert.equal(browser.images[0].hidden, true);
 });
+
 test('refresh reloads only after the server confirms completion', async () => {
+    let finish;
+    const browser = setup({ refresh: () => new Promise(resolve => { finish = resolve; }) });
+    const refreshing = browser.controls['refresh-button'].click();
+    assert.equal(browser.controls['refresh-button'].disabled, true);
+    assert.equal(browser.reloaded(), false);
+    finish({ ok: true });
+    await refreshing;
+    assert.equal(browser.reloaded(), true);
 });
+
 test('refresh failures stay on the current page and allow retry', async () => {
+    const browser = setup({ refresh: async () => ({ ok: false }) });
+    await browser.controls['refresh-button'].click();
+    assert.equal(browser.reloaded(), false);
+    assert.equal(browser.controls['refresh-button'].disabled, false);
+    assert.match(browser.controls['status-message'].textContent, /Please try again/);
 });
