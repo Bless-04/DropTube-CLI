@@ -105,7 +105,7 @@ pub fn scan_directory(params: &mut ScanDirectoryParams) {
     let current_dir = &params.current_dir;
     let base_dir = &params.base_dir;
 
-    let entries = match fs::read_dir(&current_dir) {
+    let entries = match fs::read_dir(current_dir) {
         Ok(e) => e,
         Err(err) => {
             warn!(
