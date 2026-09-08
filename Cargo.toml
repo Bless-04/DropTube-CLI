@@ -2,6 +2,8 @@
 name = "droptube"
 version = "0.3.0"
 edition = "2024"
+authors = ["Blessing"]
+repository = "https://github.com/Bless-04/DropTube-CLI"
 
 [dependencies]
 axum = "0.8.9"
