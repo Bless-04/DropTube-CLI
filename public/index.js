@@ -19,64 +19,62 @@ document.querySelectorAll('.time-elapsed').forEach(element => {
     }
 });
 
-// --- Server-side search (debounced URL navigation) ---
-let searchTimeout = null;
-
-function handleSearch(value) {
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-        const params = new URLSearchParams(window.location.search);
-        if (value.trim()) {
-            params.set('search', value.trim());
-        } else {
-            params.delete('search');
-        }
-        params.set('page', '1');
-        params.delete('v'); // exit player view on search
-        window.location.href = '/?' + params.toString();
-    }, 400);
+// Only request images close to the viewport. Feed cards never request video bytes.
+const thumbnails = document.querySelectorAll('img[data-src]');
+function loadThumbnail(image) {
+    image.addEventListener('error', () => {
+        image.removeAttribute('src');
+        image.hidden = true;
+    }, { once: true });
+    image.src = image.dataset.src;
+    delete image.dataset.src;
 }
-
-// --- Server-side tag filter (URL navigation) ---
-function filterByTag(tag) {
-    const params = new URLSearchParams(window.location.search);
-    if (tag === 'all' || !tag) {
-        params.delete('tag');
-    } else {
-        params.set('tag', tag);
-    }
-    params.set('page', '1');
-    params.delete('v'); // exit player view on tag filter
-    window.location.href = '/?' + params.toString();
-}
-
-// --- Refresh index action ---
-function refreshIndex(btn) {
-    const icon = document.getElementById('refresh-icon');
-    const text = document.getElementById('refresh-text');
-
-    icon.classList.add('animate-spin');
-    if (text) text.textContent = 'Syncing...';
-    btn.disabled = true;
-
-    fetch('/refresh', { method: 'POST' })
-        .then(response => {
-            if (response.ok) {
-                setTimeout(() => {
-                    window.location.reload();
-                }, 800);
-            } else {
-                alert('Failed to refresh index.');
-                icon.classList.remove('animate-spin');
-                if (text) text.textContent = 'Refresh Index';
-                btn.disabled = false;
+if ('IntersectionObserver' in window) {
+    const observer = new IntersectionObserver(entries => {
+        for (const entry of entries) {
+            if (entry.isIntersecting) {
+                loadThumbnail(entry.target);
+                observer.unobserve(entry.target);
             }
-        })
-        .catch(err => {
-            console.error(err);
-            alert('Network error while refreshing index.');
-            icon.classList.remove('animate-spin');
-            if (text) text.textContent = 'Refresh Index';
-            btn.disabled = false;
-        });
+        }
+    }, { rootMargin: '200px 0px' });
+    thumbnails.forEach(image => observer.observe(image));
+} else {
+    // Native lazy loading is also present for older browsers and the no-JS fallback.
+    thumbnails.forEach(loadThumbnail);
 }
+
+// Search is a regular GET form: Enter, the search button, and no-JS browsing all work.
+const searchForm = document.querySelector('.search-form');
+searchForm?.addEventListener('submit', () => {
+    const search = searchForm.querySelector('[name="search"]');
+    search.value = search.value.trim();
+});
+
+const menuToggle = document.getElementById('menu-toggle');
+menuToggle?.addEventListener('click', () => {
+    const collapsed = document.body.classList.toggle('sidebar-collapsed');
+    menuToggle.setAttribute('aria-expanded', String(!collapsed));
+});
+
+const refreshButton = document.getElementById('refresh-button');
+refreshButton?.addEventListener('click', async () => {
+    const icon = document.getElementById('refresh-icon');
+    const status = document.getElementById('status-message');
+    refreshButton.disabled = true;
+    refreshButton.setAttribute('aria-busy', 'true');
+    icon.classList.add('animate-spin');
+    status.textContent = 'Refreshing your library…';
+    status.hidden = false;
+    try {
+        const response = await fetch('/refresh', { method: 'POST' });
+        if (!response.ok) throw new Error('Refresh failed');
+        // The endpoint responds only after the new index is ready.
+        window.location.reload();
+    } catch {
+        status.textContent = 'Could not refresh your library. Please try again.';
+        refreshButton.disabled = false;
+        refreshButton.removeAttribute('aria-busy');
+        icon.classList.remove('animate-spin');
+    }
+});

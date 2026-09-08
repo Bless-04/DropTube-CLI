@@ -1,100 +1,56 @@
 <!DOCTYPE html>
-<html lang="en" class="bg-[#0f0f0f]">
-
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DropTube - Seamless LAN Media Streaming</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preload" href="/public/index.css" as="style">
+    <meta name="color-scheme" content="dark">
+    <title>DropTube · Your local video library</title>
+    <link rel="icon" href="/public/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/public/index.css">
+    <script src="/public/index.js" defer></script>
 </head>
-
-<body class="bg-[#0f0f0f] text-white antialiased selection:bg-red-600 selection:text-white min-h-screen flex flex-col">
-    <!-- Header -->
-    <header
-        class="sticky top-0 z-50 bg-[#0f0f0f]/90 backdrop-blur-md border-b border-zinc-900 px-4 py-3 flex items-center justify-between">
-        <a href="/" class="flex items-center gap-2 select-none group">
-            <span
-                class="bg-red-600 group-hover:bg-red-700 transition-colors text-white px-2.5 py-1 rounded-xl text-sm font-extrabold tracking-tighter flex items-center gap-1 shadow-lg shadow-red-600/10">
-                🎬 RUST
-            </span>
-            <span class="text-white text-lg font-bold tracking-tight">DropTube</span>
-        </a>
-
-        <!-- Client-Side Search Bar -->
-        <div class="relative max-w-xs md:max-w-md w-full mx-4 flex items-center">
-            <div class="absolute left-3.5 text-zinc-500 pointer-events-none">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"
-                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-            </div>
-            <label for="search"></label><input type="text" id="search" placeholder="Search videos..."
-                                               class="w-full bg-[#181818] border border-zinc-800 text-zinc-200 placeholder-zinc-500 pl-10 pr-4 py-1.5 rounded-full text-xs md:text-sm focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all"
-                                               value="{% block search_value %}{% endblock %}"
-                                               oninput="handleSearch(this.value)" />
+<body>
+    <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+        <symbol id="icon-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10H15v-7H9v7H3z"/></symbol>
+        <symbol id="icon-folder" viewBox="0 0 24 24"><path d="M3 7V5h6l2 2h10v13H3z"/></symbol>
+        <symbol id="icon-play" viewBox="0 0 24 24"><path d="m9 5 11 7-11 7z"/></symbol>
+        <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+        <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M5.5 7a8 8 0 0 1 13-1L20 9M4 15l1.5 3a8 8 0 0 0 13-1"/></symbol>
+        <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></symbol>
+        <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    </svg>
+    <a href="#main" class="skip-link">Skip to videos</a>
+    <header class="topbar">
+        <div class="brand-group">
+            <button class="icon-button menu-toggle" id="menu-toggle" aria-label="Toggle navigation" aria-expanded="true" aria-controls="sidebar"><svg class="icon"><use href="#icon-menu"/></svg></button>
+            <a href="/" class="brand" aria-label="DropTube home"><span class="brand-mark"><svg viewBox="0 0 24 24"><path d="m9 6 10 6-10 6z"/></svg></span><span>DropTube</span><sup>LOCAL</sup></a>
         </div>
-
-        <!-- Navigation Actions -->
-        <div class="flex items-center gap-3">
-            <button onclick="refreshIndex(this)"
-                class="inline-flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 active:scale-95 text-zinc-300 font-medium px-4 py-1.5 rounded-full transition-all text-xs"
-                title="Force-rescan directories in background">
-                <svg id="refresh-icon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M9 11l3 3L21 3" />
-                </svg>
-                <span id="refresh-text" class="hidden sm:inline">Refresh Index</span>
-            </button>
-            <a href="/explorer"
-                class="inline-flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 active:scale-95 text-zinc-300 font-medium px-4 py-1.5 rounded-full transition-all text-xs">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                </svg>
-                <span class="hidden sm:inline">Explorer Mode</span>
-                <span class="sm:hidden">Explorer</span>
-            </a>
-            <div
-                class="hidden lg:flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-full px-3.5 py-1.5 text-xs text-zinc-400 font-medium">
-                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                LAN: {{ local_ip }}:{{ port }}
-            </div>
+        <form class="search-form" action="/" method="get" role="search">
+            <label class="visually-hidden" for="search">Search videos</label>
+            <input type="search" id="search" name="search" placeholder="Search" value="{% block search_value %}{% endblock %}" autocomplete="off">
+            {% block search_filters %}{% endblock %}
+            <button type="submit" aria-label="Search" title="Search"><svg class="icon"><use href="#icon-search"/></svg></button>
+        </form>
+        <div class="header-actions">
+            <a class="icon-button mobile-folders" href="/explorer" aria-label="Browse folders" title="Browse folders"><svg class="icon"><use href="#icon-folder"/></svg></a>
+            <button class="icon-button" id="refresh-button" aria-label="Refresh library" title="Refresh library"><svg class="icon" id="refresh-icon"><use href="#icon-refresh"/></svg></button>
+            <span class="local-avatar" title="Local library">L</span>
         </div>
     </header>
-
-    {% block category_filters %}{% endblock %}
-
-    <!-- Main Workspace -->
-    <main class="flex-grow">
+    <aside class="sidebar" id="sidebar" aria-label="Library navigation">
+        <nav>
+            <a href="/" class="nav-link {% block home_active %}{% endblock %}"><svg class="icon"><use href="#icon-home"/></svg><span>Home</span></a>
+            <a href="/explorer" class="nav-link {% block explorer_active %}{% endblock %}"><svg class="icon"><use href="#icon-folder"/></svg><span>Browse folders</span></a>
+        </nav>
+        <div class="sidebar-note"><h2>Your library.<br>Your screen.</h2><p>All your local videos,<br>in one place.</p></div>
+        <div class="connection"><span class="status-dot"></span><div><strong>Local network</strong><span>{{ local_ip }}:{{ port }}</span></div></div>
+        <p class="sidebar-footer">DropTube · Made for your media</p>
+    </aside>
+    <main class="workspace" id="main">
+        {% block category_filters %}{% endblock %}
         {% block content %}{% endblock %}
     </main>
-
-    <!-- Sticky Bottom Info Bar for Mobile -->
-    <div
-        class="md:hidden sticky bottom-0 left-0 right-0 bg-[#121212]/95 backdrop-blur border-t border-zinc-800 px-4 py-2 text-center text-[10px] text-zinc-400 z-40">
-        Streaming from Host IP: <span class="text-zinc-200 font-semibold">{{ local_ip }}:{{ port }}</span>
-    </div>
-
-    <!-- Footer -->
-    <footer class="border-t border-zinc-950 bg-[#090909] py-6 px-4 text-center text-xs text-zinc-600 mt-auto">
-        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-            <p>© 2026 DropTube Media Server</p>
-            <p class="flex items-center gap-2">
-                <span
-                    class="bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded text-[10px] text-zinc-500">Stateless</span>
-                <span class="bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded text-[10px] text-zinc-500">Enums &
-                    Sidecars</span>
-                <span class="bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded text-[10px] text-zinc-500">HTTP 206
-                    Ranges</span>
-                <span class="bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded text-[10px] text-zinc-500">Zero-Copy
-                    Tokio</span>
-            </p>
-        </div>
-    </footer>
-
-    <script src="/public/index.js"></script>
+    <div id="status-message" class="toast" role="status" aria-live="polite" hidden></div>
 </body>
-
 </html>
