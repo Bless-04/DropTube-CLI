@@ -38,6 +38,14 @@ function setup({ observerAvailable = true, refresh = null } = {}) {
 }
 
 test('offscreen thumbnails stay unloaded until they approach the viewport', () => {
+    const browser = setup();
+    assert.ok(browser.images.every(image => image.src === undefined));
+    browser.intersect([{ target: browser.images[1], isIntersecting: false }]);
+    assert.equal(browser.images[1].src, undefined);
+    browser.intersect([{ target: browser.images[0], isIntersecting: true }]);
+    assert.equal(browser.images[0].src, 'first.jpg');
+    assert.equal(browser.images[1].src, undefined);
+    assert.equal(browser.watched.has(browser.images[0]), false);
 });
 test('browsers without an observer receive native-lazy image sources', () => {
 });
