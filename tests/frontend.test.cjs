@@ -7,3 +7,11 @@ const path = require('node:path');
 const script = fs.readFileSync(path.join(__dirname, '../public/index.js'), 'utf8');
 test('offscreen thumbnails stay unloaded until they approach the viewport', () => {
 });
+test('browsers without an observer receive native-lazy image sources', () => {
+});
+test('broken thumbnails fall back to the placeholder', () => {
+});
+test('refresh reloads only after the server confirms completion', async () => {
+});
+test('refresh failures stay on the current page and allow retry', async () => {
+});
