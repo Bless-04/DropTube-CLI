@@ -35,3 +35,10 @@ pub fn local_urls(local_ip_addr: String, port: u16) {
         error!("Failed to generate QR code: {}", e);
     }
 }
+
+/// title for cli
+pub fn title() {
+    println!("\n\x1b[1;36m============================================================\x1b[0m");
+    println!("🎬 \x1b[1;32mDropTube\x1b[0m - Local Media Server");
+    println!("\x1b[1;36m============================================================\x1b[0m");
+}
