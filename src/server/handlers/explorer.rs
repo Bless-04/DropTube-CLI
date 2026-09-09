@@ -43,14 +43,12 @@ async fn explorer_handler(
     State(state): State<AppState>,
     Path(sub_path): Path<String>,
 ) -> Result<Response, TemplateError> {
-    // Percent-decode the sub-path
-    let decoded_sub_path = percent_encoding::percent_decode_str(&sub_path)
-        .decode_utf8()
-        .unwrap_or_else(|_| std::borrow::Cow::Borrowed(""));
-
-    // Safe path join
-    let target_path = state.movie_directory.join(decoded_sub_path.as_ref());
-    // Prevent path traversal attack
+    // Axum has already decoded the path once. Canonicalize before checking containment.
+    let decoded_sub_path = sub_path;
+    let target_path = match state.movie_directory.join(&decoded_sub_path).canonicalize() {
+        Ok(path) => path,
+        Err(_) => return Ok(StatusCode::NOT_FOUND.into_response()),
+    };
     if !target_path.starts_with(&state.movie_directory) {
         return Ok((
             StatusCode::FORBIDDEN,
@@ -251,5 +249,15 @@ async fn explorer_handler(
         // Redirect to the static /video endpoint
         let encoded_file = utf8_percent_encode(&decoded_sub_path, NON_ALPHANUMERIC).to_string();
         Ok(Redirect::temporary(&format!("/video/{}", encoded_file)).into_response())
+    }
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn filesystem_labels_are_escaped_before_inserting_html() {
+        assert_eq!(
+            super::escape_html("<b>O'Brien & \"friends\"</b>"),
+            "&lt;b&gt;O&#39;Brien &amp; &quot;friends&quot;&lt;/b&gt;"
+        );
     }
 }
