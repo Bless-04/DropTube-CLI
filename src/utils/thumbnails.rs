@@ -16,6 +16,18 @@ impl ThumbnailGenerator {
     /// The generated path for the thumbnails made by ffmpeg
     pub const GENERATED_PATH: &str = ".droptube-thumbnails";
 
+    /// ffmpeg thumbnail gen args
+    pub const CONFIG_ARGS: [&'static str; 7] = [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostdin",
+        "-threads",
+        "1",
+        "-i",
+    ];
+
+    /// ffmpeg Args to generate the thumbnail
     pub const GENERATION_ARGS: [&'static str; 19] = [
         "-map",
         "0:v:0",
