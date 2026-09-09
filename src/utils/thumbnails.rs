@@ -54,7 +54,55 @@ impl ThumbnailGenerator {
     }
 
     /// Creates a 480×270 JPEG, or reuses one newer than the source video.
+    ///
+    /// The cache lives beside the video in `.droptube-thumbnails`, with the full
+    /// video filename retained to distinguish containers with the same stem.
+    /// Its directory is dot-hidden on Unix and marked Hidden on Windows, including
+    /// existing cache directories encountered when reusing a thumbnail.
+    /// Callers must serialize generation for the same source. A failed or cancelled
+    /// decode never publishes a partial JPEG; timed-out/dropped children are killed.
     pub async fn generate_thumbnail(&self, source: &Path) -> io::Result<PathBuf> {
+        let source = fs::canonicalize(source).await?;
+        let destination = thumbnail_path(&source)?;
+        let parent = destination
+            .parent()
+            .ok_or_else(|| io::Error::other("thumbnail has no parent directory"))?;
+        let source_modified = fs::metadata(&source).await?.modified()?;
+        if let Ok(metadata) = fs::metadata(&destination).await
+            && metadata.is_file()
+            && metadata.len() > 0
+            && metadata.modified()? >= source_modified
+        {
+            prepare_thumbnail_directory(parent).await?;
+            return Ok(destination);
+        }
+
+        let mut command = Command::new(&self.executable);
+        command
+            .args(ThumbnailGenerator::CONFIG_ARGS)
+            .arg(&source)
+            .args(ThumbnailGenerator::GENERATION_ARGS);
+        let output = run_command(&mut command, Duration::from_secs(30)).await?;
+        if !output.status.success() {
+            return Err(io::Error::other(format!(
+                "FFmpeg could not decode the video: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        if !output.stdout.starts_with(&[0xff, 0xd8, 0xff]) // valid jpeg starting bytes; if it doesnt have this then something went wrong
+            || !output.stdout.ends_with(&[0xff, 0xd9])
+        {
+            return Err(io::Error::other("FFmpeg produced no complete JPEG frame"));
+        }
+        prepare_thumbnail_directory(parent).await?;
+        let temporary = destination.with_extension("jpg.tmp");
+        fs::write(&temporary, output.stdout).await?;
+        fs::rename(&temporary, &destination).await?;
+        Ok(destination)
+    }
+}
+
+//todo refactor this to use a lib to abstract this process away and for it to work the same across platforms
 }
 
 #[cfg(test)]
