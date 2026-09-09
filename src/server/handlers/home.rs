@@ -1,28 +1,32 @@
 use crate::config::constants::PAGE_SIZE;
 use crate::models::state::{AppState, HomeQuery};
-use crate::models::video::{Tag, VideoFormat};
-use crate::utils::tailwind;
+use crate::models::video::{Tag, VideoFile, VideoFormat};
+use crate::server::handlers::TemplateError;
+use askama::Template;
 use axum::{
     extract::{Query, State},
     response::{Html, IntoResponse},
 };
 use local_ip_address::local_ip;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
-use askama::Template;
-use crate::server::handlers::TemplateError;
 
 #[derive(Template)]
 #[template(path = "home.html")]
-pub struct HomeTemplate {
-    pub search_query: String,
-    pub all_btn_class: String,
-    pub tag_filters_html: String,
-    pub has_active: bool,
-    pub player_html: String,
-    pub video_cards_html: String,
-    pub pagination_html: String,
-    pub local_ip: String,
-    pub port: u16,
+struct HomeTemplate {
+    search_query: String,
+    tag_filter: String,
+    tags: Vec<TagLink>,
+    all_url: String,
+    active: Option<VideoCard>,
+    cards: Vec<VideoCard>,
+    total_count: usize,
+    current_page: usize,
+    total_pages: usize,
+    previous_url: String,
+    next_url: String,
+    has_filters: bool,
+    local_ip: String,
+    port: u16,
 }
 
 /// Handles homepage requests. Lists video files in the served directory.
@@ -203,8 +207,19 @@ pub async fn home_page_handler(
 
         let file_size_str = if video.file_size_mb >= 1024 {
             format!("{:.1} GB", (video.file_size_mb as f64) / 1024.0)
+impl HomeTemplate {
+    fn new(videos: &[VideoFile], mut query: HomeQuery, port: u16) -> Self {
+        let search_query = query
+            .search
+            .as_deref()
+            .unwrap_or_default()
+            .trim()
+            .to_owned();
+        let tag_filter = query.tag.as_deref().unwrap_or_default().trim();
+        let tag_filter = if tag_filter.eq_ignore_ascii_case("all") {
+            String::new()
         } else {
-            format!("{} MB", video.file_size_mb)
+            tag_filter.to_owned()
         };
 
         // Render card tags
