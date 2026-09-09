@@ -1,4 +1,4 @@
-mod assets;
+pub(crate) mod assets;
 pub mod explorer;
 pub mod home;
 pub mod scan;
