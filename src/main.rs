@@ -1,3 +1,6 @@
+//! DropTube command-line media server.
+#![forbid(unsafe_code)]
+
 use axum::Router;
 
 use droptube::config::constants::DEFAULT_PORT;
@@ -6,15 +9,12 @@ use droptube::models::cli;
 use droptube::models::state::AppState;
 use droptube::server::create_router;
 use droptube::utils::display;
-use droptube::utils::scanner::{ScanDirectoryParams, scan_directory};
+use droptube::utils::thumbnails::ThumbnailGenerator;
 use local_ip_address::local_ip;
 use log::{Level, error, info, warn};
-use std::cmp::Reverse;
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::SystemTime;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 /// Graceful Shutdown Signal Handler
 async fn shutdown_signal() {
@@ -103,24 +103,33 @@ async fn main() {
         }
     };
 
-    // Build initial index cache synchronously before the server starts to avoid a blank page.
+    let thumbnails = if args.generate_thumbnails {
+        let executable = args.ffmpeg_path.clone().unwrap_or_else(|| "ffmpeg".into());
+        match ThumbnailGenerator::new(executable.clone()).await {
+            Ok(generator) => Some(generator),
+            // cant enable thumbnails if FFmpeg isnt found.
+            Err(error) => panic!(
+                "--generate-thumbnails requires FFmpeg; could not use '{}': {error}. Install FFmpeg on PATH or pass --ffmpeg-path.",
+                executable.display()
+            ),
+        }
+    } else {
+        None
+    };
+
+    let mut state = AppState {
+        movie_directory: canonical_dir.clone(),
+        port: 0,
+        depth: args.max_depth,
+        index_cache: Arc::new(RwLock::new(Vec::new())),
+        thumbnails,
+        scan_lock: Arc::new(Mutex::new(())),
+    };
     info!("Performing initial filesystem index scan...");
-    let start_time = SystemTime::now();
-
-    let mut initial_params = ScanDirectoryParams::new(canonical_dir.clone(), args.max_depth);
-    scan_directory(&mut initial_params);
-
-    let scan_count = initial_params.count;
-    let duration = start_time.elapsed().map(|d| d.as_millis()).unwrap_or(0);
-    let mut initial_videos = initial_params.videos;
-    info!(
-        "Finished initial scan in {duration}ms. Found {} video(s) out of {} scanned item(s).",
-        initial_videos.len(),
-        scan_count
-    );
-    initial_videos.sort_by_key(|v| Reverse(v.unix_timestamp));
-
-    let index_cache = Arc::new(RwLock::new(initial_videos));
+    if let Err(error) = state.refresh_index().await {
+        error!("Initial scan failed: {error}");
+        std::process::exit(1);
+    }
 
     // Discover LAN IP address for display
     let local_ip_addr = local_ip()
@@ -160,50 +169,26 @@ async fn main() {
         }
     };
 
-    println!("\n\x1b[1;36m============================================================\x1b[0m");
-    println!("🎬 \x1b[1;32mDropTube\x1b[0m - Local Media Server");
-    println!("\x1b[1;36m============================================================\x1b[0m");
+    display::title();
     display::serving_dir(canonical_dir.display());
     display::scanning_mode(args.max_depth);
     display::local_urls(local_ip_addr, port);
     println!("\x1b[1;36m============================================================\x1b[0m");
 
-    // Background worker: re-scans the directory every 30 seconds.
-    let cache_clone = index_cache.clone();
-    let dir_clone = canonical_dir.clone();
+    state.port = port;
+    let background_state = state.clone();
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
-
-            let dir = dir_clone.clone();
-            let result = tokio::task::spawn_blocking(move || {
-                let mut params = ScanDirectoryParams::new(dir, args.max_depth);
-                scan_directory(&mut params);
-                params.videos
-            })
-            .await;
-
-            match result {
-                Ok(mut videos) => {
-                    videos.sort_by_key(|v| Reverse(v.unix_timestamp));
-                    let mut cache_writer = cache_clone.write().await;
-                    *cache_writer = videos;
-                }
-                Err(e) => {
-                    warn!("Background scan task panicked: {}", e);
-                }
+            if let Err(error) = background_state.refresh_index().await {
+                warn!("Background scan failed: {error}");
             }
         }
     });
 
-    let app: Router = create_router(AppState {
-        movie_directory: canonical_dir.clone(),
-        port,
-        depth: args.max_depth,
-        index_cache,
-    });
+    let app: Router = create_router(state);
 
-    /// Run the Axum server with graceful shutdown
+    // Run the Axum server with graceful shutdown
     if let Err(e) = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
