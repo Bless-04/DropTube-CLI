@@ -505,7 +505,36 @@ impl HomeTemplate {
         local_ip: local_ip_addr,
         port,
     };
+    #[test]
+    fn watch_page_loads_only_selected_video_and_preserves_filters() {
+        let videos = vec![video("First"), video("Second")];
+        let mut search = query("technology");
+        search.tag = Some("Technology".to_owned());
+        search.v = Some(videos[1].file_name.clone());
+        let template = HomeTemplate::new(&videos, search, 8081);
+        assert!(
+            template.cards[0]
+                .watch_url
+                .contains("search=technology&tag=Technology")
+        );
+        let html = template.render().expect("render watch page");
+        assert_eq!(html.matches("<video").count(), 1);
+        assert!(html.contains("preload=\"metadata\""));
+        assert!(html.contains("src=\"/video/courses/Second%2Emp4\""));
+    }
 
     let full_html = template.render()?;
     Ok(Html(full_html).into_response())
+    #[test]
+    fn empty_results_and_empty_library_have_distinct_guidance() {
+        let empty = HomeTemplate::new(&[], query(""), 8081)
+            .render()
+            .expect("empty feed");
+        assert!(empty.contains("Your library is ready for videos"));
+        let filtered = HomeTemplate::new(&[video("First")], query("missing"), 8081)
+            .render()
+            .expect("empty search");
+        assert!(filtered.contains("No videos found"));
+        assert!(filtered.contains("Clear filters"));
+    }
 }
