@@ -494,17 +494,6 @@ impl HomeTemplate {
         "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-normal"
     };
 
-    let template = HomeTemplate {
-        search_query: search_query.clone(),
-        all_btn_class: all_btn_class.to_string(),
-        tag_filters_html,
-        has_active,
-        player_html,
-        video_cards_html,
-        pagination_html,
-        local_ip: local_ip_addr,
-        port,
-    };
     #[test]
     fn watch_page_loads_only_selected_video_and_preserves_filters() {
         let videos = vec![video("First"), video("Second")];
@@ -523,8 +512,6 @@ impl HomeTemplate {
         assert!(html.contains("src=\"/video/courses/Second%2Emp4\""));
     }
 
-    let full_html = template.render()?;
-    Ok(Html(full_html).into_response())
     #[test]
     fn empty_results_and_empty_library_have_distinct_guidance() {
         let empty = HomeTemplate::new(&[], query(""), 8081)
