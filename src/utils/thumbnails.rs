@@ -16,7 +16,6 @@ impl ThumbnailGenerator {
     /// The generated path for the thumbnails made by ffmpeg
     pub const GENERATED_PATH: &str = ".droptube-thumbnails";
 
-    /// Args to generate the thumbnail
     pub const GENERATION_ARGS: [&'static str; 19] = [
         "-map",
         "0:v:0",
@@ -58,4 +57,12 @@ impl ThumbnailGenerator {
     pub async fn generate_thumbnail(&self, source: &Path) -> io::Result<PathBuf> {
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generated_path_hidden_on_unix() {
+        assert!(ThumbnailGenerator::GENERATED_PATH.starts_with('.')) // stuff starting with '.' are auto hidden on unix based systems
+    }
 }
