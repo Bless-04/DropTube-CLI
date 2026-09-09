@@ -16,7 +16,7 @@ impl ThumbnailGenerator {
     /// The generated path for the thumbnails made by ffmpeg
     pub const GENERATED_PATH: &str = ".droptube-thumbnails";
 
-    /// ffmpeg thumbnail gen args
+    /// ffmpeg configuration args
     pub const CONFIG_ARGS: [&'static str; 7] = [
         "-hide_banner",
         "-loglevel",
@@ -54,6 +54,7 @@ impl ThumbnailGenerator {
     /// Returns an error if it is absent, unusable, or takes more than five seconds.
     pub async fn new(executable: PathBuf) -> io::Result<Self> {
         let generator = Self { executable };
+
         let mut command = Command::new(&generator.executable);
         command.arg("-version");
         let output = run_command(&mut command, Duration::from_secs(5)).await?;
@@ -114,7 +115,6 @@ impl ThumbnailGenerator {
     }
 }
 
-//todo refactor this to use a lib to abstract this process away and for it to work the same across platforms
 }
 
 #[cfg(test)]
