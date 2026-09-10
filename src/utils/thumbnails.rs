@@ -125,4 +125,28 @@ mod tests {
     fn test_generated_path_hidden_on_unix() {
         assert!(ThumbnailGenerator::GENERATED_PATH.starts_with('.')) // stuff starting with '.' are auto hidden on unix based systems
     }
+    #[tokio::test]
+    async fn missing_ffmpeg_returns_an_error() {
+        let result = ThumbnailGenerator::new(PathBuf::from("/droptube-missing-tools/ffmpeg")).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn an_unrelated_executable_is_rejected() {
+        let executable = std::env::current_exe().expect("test executable");
+        assert!(ThumbnailGenerator::new(executable).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn missing_video_returns_an_error_before_decoding() {
+        let generator = ThumbnailGenerator {
+            executable: PathBuf::from("unused"),
+        };
+        assert!(
+            generator
+                .generate_thumbnail(Path::new("/droptube-missing-videos/no.mp4"))
+                .await
+                .is_err()
+        );
+    }
 }
