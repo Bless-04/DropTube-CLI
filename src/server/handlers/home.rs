@@ -29,184 +29,96 @@ struct HomeTemplate {
     port: u16,
 }
 
-/// Handles homepage requests. Lists video files in the served directory.
-/// Renders a dynamic player if the query param `v` is set.
-pub async fn home_page_handler(
-    State(state): State<AppState>,
-    Query(query): Query<HomeQuery>,
-) -> Result<impl IntoResponse, TemplateError> {
-    let port = state.port;
+struct TagLink {
+    label: String,
+    url: String,
+    selected: bool,
+}
 
-    // getting read lock on the cached index immediately
-    let videos = {
-        let reader = state.index_cache.read().await;
-        reader.clone()
-    };
-    // Gather unique tags for the header filters bubble list
-    let mut unique_tags = std::collections::HashSet::new();
-    for video in &videos {
-        for tag in &video.tags {
-            unique_tags.insert(tag.clone());
+struct VideoCard {
+    title: String,
+    watch_url: String,
+    media_url: String,
+    thumbnail_url: Option<String>,
+    format: &'static str,
+    size: String,
+    timestamp: u64,
+    tags: Vec<String>,
+    rating: &'static str,
+    is_rated: bool,
+    is_playing: bool,
+    is_mkv: bool,
+}
+
+impl VideoCard {
+    fn new(video: &VideoFile, query: &HomeQuery) -> Self {
+        Self {
+            title: video.display_name.clone(),
+            watch_url: page_url(
+                query,
+                query.page.unwrap_or(1) as usize,
+                Some(&video.file_name),
+            ),
+            media_url: media_url(&video.file_name),
+            thumbnail_url: video.thumbnail_path.as_deref().map(media_url),
+            format: video.format.as_str(),
+            size: if video.file_size_mb >= 1024 {
+                format!("{:.1} GB", video.file_size_mb as f64 / 1024.0)
+            } else if video.file_size_mb == 0 {
+                "<1 MB".to_owned()
+            } else {
+                format!("{} MB", video.file_size_mb)
+            },
+            timestamp: video.unix_timestamp,
+            tags: video
+                .tags
+                .iter()
+                .map(|tag| tag.as_str().to_owned())
+                .collect(),
+            rating: video.rating.as_stars(),
+            is_rated: video.rating.is_rated(),
+            is_playing: query.v.as_deref() == Some(video.file_name.as_str()),
+            is_mkv: video.format == VideoFormat::Mkv,
         }
     }
-    let mut unique_tags_list: Vec<Tag> = unique_tags.into_iter().collect();
-    unique_tags_list.sort_by_key(|t| t.as_str().to_lowercase());
+}
 
-    let search_query = query.search.as_deref().unwrap_or("").trim().to_lowercase();
-    let tag_filter = query.tag.as_deref().unwrap_or("").trim().to_lowercase();
+fn media_url(path: &str) -> String {
+    format!(
+        "/video/{}",
+        path.split('/')
+            .map(|part| utf8_percent_encode(part, NON_ALPHANUMERIC).to_string())
+            .collect::<Vec<_>>()
+            .join("/")
+    )
+}
 
-    let mut tag_filters_html = String::new();
-    for tag in unique_tags_list {
-        let is_active = tag.as_str().to_lowercase() == tag_filter;
-        let btn_class = if is_active {
-            "bg-red-600 text-white font-semibold"
-        } else {
-            "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-normal"
-        };
-        tag_filters_html.push_str(&format!(
-            r#"
-            <button
-                onclick="filterByTag('{}')"
-                class="tag-btn {} text-xs px-4 py-1.5 rounded-full active:scale-95 transition-all flex-shrink-0"
-            >
-                {}
-            </button>
-            "#,
-            tag.as_str(), btn_class, tag.as_str()
-        ));
-    }
-
-    // Handle Active Video Details
-    let active_video = query
-        .v
-        .and_then(|v_name| videos.iter().find(|v| v.file_name == v_name).cloned());
-
-    let has_active = active_video.is_some();
-
-    // --- Server-side search & tag filtering ---
-    let filtered_videos: Vec<_> = videos
-        .into_iter()
-        .filter(|v| {
-            let matches_search = search_query.is_empty()
-                || v.display_name.to_lowercase().contains(&search_query);
-            let matches_tag = tag_filter.is_empty()
-                || tag_filter == "all"
-                || v.tags.iter().any(|t| t.as_str().to_lowercase() == tag_filter);
-            matches_search && matches_tag
-        })
-        .collect();
-
-    // --- Pagination ---
-    let total_count = filtered_videos.len();
-    let current_page = query.page.unwrap_or(1).max(1) as usize;
-    let total_pages = if total_count == 0 { 1 } else { (total_count + PAGE_SIZE - 1) / PAGE_SIZE };
-    let current_page = current_page.min(total_pages);
-    let start_idx = (current_page - 1) * PAGE_SIZE;
-    let end_idx = (start_idx + PAGE_SIZE).min(total_count);
-    let page_videos = &filtered_videos[start_idx..end_idx];
-
-    // Render Pinned Video Player (HTML5 video tag)
-    let player_html = if let Some(ref video) = active_video {
-        let encoded_filename = utf8_percent_encode(&video.file_name, NON_ALPHANUMERIC).to_string();
-        let file_size_str = if video.file_size_mb >= 1024 {
-            format!("{:.2} GB", (video.file_size_mb as f64) / 1024.0)
-        } else {
-            format!("{} MB", video.file_size_mb)
-        };
-
-        let rating_stars = video.rating.as_stars();
-        let rating_color = if video.rating.is_rated() {
-            "text-amber-400"
-        } else {
-            "text-zinc-500"
-        };
-
-        let mkv_warning = if video.format == VideoFormat::Mkv {
-            r#"
-            <div class="mt-3 bg-amber-500 bg-opacity-10 border border-amber-500/30 rounded-lg p-3 text-xs text-amber-400">
-                <span class="font-bold">⚠️ MKV Playback Note:</span> Most mobile browsers do not natively support MKV formats. If playback fails to start, we recommend playing it via VLC Player or converting the container to MP4 (H.264).
-            </div>
-            "#
-        } else {
-            ""
-        };
-
-        // Render tags badges for active video
-        let mut active_tags_badges = String::new();
-        for tag in &video.tags {
-            active_tags_badges.push_str(&format!(
-                r#"<span class="px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wide {}">{}</span>"#,
-                tag.tailwind_badge_class(), tag.as_str()
+fn page_url(query: &HomeQuery, page: usize, active: Option<&str>) -> String {
+    let mut url = format!("/?page={page}");
+    for (key, value) in [
+        ("search", query.search.as_deref()),
+        ("tag", query.tag.as_deref()),
+        ("v", active),
+    ] {
+        if let Some(value) = value.filter(|value| !value.is_empty()) {
+            url.push_str(&format!(
+                "&{key}={}",
+                utf8_percent_encode(value, NON_ALPHANUMERIC)
             ));
         }
+    }
+    url
+}
 
-        format!(
-            r#"
-            <div class="lg:col-span-2 flex flex-col">
-                <!-- Video Container with 16:9 Aspect Ratio -->
-                <div class="relative w-full aspect-video bg-black rounded-none md:rounded-2xl overflow-hidden shadow-2xl border border-zinc-800">
-                    <video
-                        id="video-player"
-                        src="/video/{}"
-                        class="w-full h-full"
-                        controls
-                        autoplay
-                        playsinline>
-                    </video>
-                </div>
-                <!-- Video Metadata -->
-                <div class="p-4 md:px-0">
-                    <div class="flex items-center gap-2 mb-1.5 flex-wrap">
-                        {}
-                    </div>
-                    <h1 class="text-white text-lg md:text-2xl font-bold tracking-tight leading-tight">{}</h1>
-                    <div class="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs md:text-sm text-zinc-400 border-b border-zinc-800 pb-4">
-                        <div class="flex items-center gap-3">
-                            <span class="bg-red-600/15 text-red-500 font-semibold px-2.5 py-0.5 rounded-full text-xs uppercase">{} format</span>
-                            <span>•</span>
-                            <span>{}</span>
-                            <span>•</span>
-                            <span class="{} font-mono font-medium tracking-wider">{}</span>
-                        </div>
-                        <a href="/video/{}" download class="inline-flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-white font-medium px-4 py-1.5 rounded-full transition-all text-xs">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                            Download File
-                        </a>
-                    </div>
-                    {}
-                </div>
-            </div>
-            "#,
-            encoded_filename,
-            active_tags_badges,
-            video.display_name,
-            video.format.as_str(),
-            file_size_str,
-            rating_color,
-            rating_stars,
-            encoded_filename,
-            mkv_warning
-        )
-    } else {
-        "".to_string()
-    };
+fn matches_search(video: &VideoFile, terms: &[String]) -> bool {
+    let mut searchable = format!("{} {}", video.display_name, video.file_name).to_lowercase();
+    for tag in &video.tags {
+        searchable.push(' ');
+        searchable.push_str(&tag.as_str().to_lowercase());
+    }
+    terms.iter().all(|term| searchable.contains(term))
+}
 
-    // Render Video Cards
-    let mut video_cards_html = String::new();
-    for video in page_videos {
-        let encoded_filename = utf8_percent_encode(&video.file_name, NON_ALPHANUMERIC).to_string();
-        let is_playing_card = active_video
-            .as_ref()
-            .map(|v| v.file_name == video.file_name)
-            .unwrap_or(false);
-        let active_card_border = if is_playing_card {
-            "border border-red-600 ring-2 ring-red-600/20"
-        } else {
-            "border border-transparent"
-        };
-
-        let file_size_str = if video.file_size_mb >= 1024 {
-            format!("{:.1} GB", (video.file_size_mb as f64) / 1024.0)
 impl HomeTemplate {
     fn new(videos: &[VideoFile], mut query: HomeQuery, port: u16) -> Self {
         let search_query = query
@@ -221,278 +133,177 @@ impl HomeTemplate {
         } else {
             tag_filter.to_owned()
         };
-
-        // Render card tags
-        let mut card_tags_html = String::new();
-        for tag in &video.tags {
-            card_tags_html.push_str(&format!(
-                r#"<span class="px-1.5 py-0.2 rounded text-[9px] uppercase font-bold tracking-wide {}">{}</span>"#,
-                tag.tailwind_badge_class(), tag.as_str()
-            ));
-        }
-
-        // Comma-separated tag list for JS filter matching
-        let tags_csv = video
-            .tags
+        query.search = Some(search_query.clone());
+        query.tag = Some(tag_filter.clone());
+        let selected_tag = Tag::parse(&tag_filter);
+        let terms: Vec<_> = search_query
+            .split_whitespace()
+            .map(str::to_lowercase)
+            .collect();
+        let filtered: Vec<_> = videos
             .iter()
-            .map(|t| t.as_str())
-            .collect::<Vec<&str>>()
-            .join(",");
+            .filter(|video| {
+                matches_search(video, &terms)
+                    && (tag_filter.is_empty() || video.tags.contains(&selected_tag))
+            })
+            .collect();
+        let total_count = filtered.len();
+        let total_pages = total_count.div_ceil(PAGE_SIZE).max(1);
+        let current_page = (query.page.unwrap_or(1) as usize).clamp(1, total_pages);
+        query.page = Some(current_page as u32);
+        let active = query
+            .v
+            .as_deref()
+            .and_then(|name| videos.iter().find(|video| video.file_name == name))
+            .map(|video| VideoCard::new(video, &query));
+        let cards = filtered
+            .into_iter()
+            .skip((current_page - 1) * PAGE_SIZE)
+            .take(PAGE_SIZE)
+            .map(|video| VideoCard::new(video, &query))
+            .collect();
+        let mut unique_tags: Vec<_> = videos
+            .iter()
+            .flat_map(|video| video.tags.iter().cloned())
+            .collect();
+        unique_tags.sort_by_key(|tag| tag.as_str().to_lowercase());
+        unique_tags.dedup();
+        let tags = unique_tags
+            .into_iter()
+            .map(|tag| {
+                let tag_query = HomeQuery {
+                    search: Some(search_query.clone()),
+                    tag: Some(tag.as_str().to_owned()),
+                    page: None,
+                    v: None,
+                };
+                TagLink {
+                    label: tag.as_str().to_owned(),
+                    url: page_url(&tag_query, 1, None),
+                    selected: !tag_filter.is_empty() && tag == selected_tag,
+                }
+            })
+            .collect();
+        let all_url = page_url(
+            &HomeQuery {
+                search: Some(search_query.clone()),
+                tag: None,
+                page: None,
+                v: None,
+            },
+            1,
+            None,
+        );
+        Self {
+            previous_url: page_url(
+                &query,
+                current_page.saturating_sub(1).max(1),
+                query.v.as_deref(),
+            ),
+            next_url: page_url(
+                &query,
+                current_page.saturating_add(1).min(total_pages),
+                query.v.as_deref(),
+            ),
+            has_filters: !search_query.is_empty() || !tag_filter.is_empty(),
+            search_query,
+            tag_filter,
+            tags,
+            all_url,
+            active,
+            cards,
+            total_count,
+            current_page,
+            total_pages,
+            local_ip: local_ip()
+                .map(|ip| ip.to_string())
+                .unwrap_or_else(|_| "localhost".to_owned()),
+            port,
+        }
+    }
+}
 
-        let rating_stars = video.rating.as_stars();
-        let rating_color = if video.rating.is_rated() {
-            "text-amber-400"
-        } else {
-            "text-zinc-500"
-        };
+/// Renders the paginated library or a watch page; only the selected video receives a media element.
+pub async fn home_page_handler(
+    State(state): State<AppState>,
+    Query(query): Query<HomeQuery>,
+) -> Result<impl IntoResponse, TemplateError> {
+    let template = {
+        let videos = state.index_cache.read().await;
+        HomeTemplate::new(&videos, query, state.port)
+    };
+    Ok(Html(template.render()?))
+}
 
-        // Generate thumbnail component (custom image or dynamic gradient fallback)
-        let main_thumb_html = if let Some(ref thumb) = video.thumbnail_path {
-            let encoded_thumb = utf8_percent_encode(thumb, NON_ALPHANUMERIC).to_string();
-            format!(
-                r#"<img src="/video/{}" class="w-full h-full object-cover animate-fade-in" alt="Thumbnail" />"#,
-                encoded_thumb
-            )
-        } else {
-            format!(
-                r#"
-                <div class="w-full h-full bg-gradient-to-tr {} flex items-center justify-center">
-                    <svg class="w-14 h-14 text-white opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                    </svg>
-                </div>
-                "#,
-                tailwind::get_gradient_class(&video.file_name)
-            )
-        };
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::video::Rating;
 
-        let compact_thumb_html = if let Some(ref thumb) = video.thumbnail_path {
-            let encoded_thumb = utf8_percent_encode(thumb, NON_ALPHANUMERIC).to_string();
-            format!(
-                r#"<img src="/video/{}" class="w-full h-full object-cover animate-fade-in" alt="Thumbnail" />"#,
-                encoded_thumb
-            )
-        } else {
-            format!(
-                r#"
-                <div class="w-full h-full bg-gradient-to-tr {} flex items-center justify-center">
-                    <svg class="w-8 h-8 text-white opacity-90 drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                    </svg>
-                </div>
-                "#,
-                tailwind::get_gradient_class(&video.file_name)
-            )
-        };
-
-        let card_class = if has_active {
-            // Watch page side list (compact horizontal cards)
-            format!(
-                r#"
-                <div class="video-card flex gap-3 p-2 rounded-xl cursor-pointer hover:bg-zinc-900 transition-colors duration-150 {}"
-                     data-title="{}"
-                     data-tags="{}"
-                     onclick="window.location.href='/?v={}'">
-                    <!-- Compact Thumbnail -->
-                    <div class="relative w-36 aspect-video bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden shadow-inner">
-                        {}
-                        <span class="absolute bottom-1 right-1 bg-black/85 text-[10px] px-1 py-0.2 rounded font-semibold text-zinc-100">{}</span>
-                    </div>
-                    <!-- Details -->
-                    <div class="flex flex-col min-w-0 justify-center">
-                        <h4 class="text-white text-xs md:text-sm font-semibold truncate leading-tight">{}</h4>
-                        <div class="flex items-center gap-1.5 mt-1">
-                            <span class="text-[9px] uppercase font-semibold text-zinc-400">{}</span>
-                            <span class="{} text-[9px]">{}</span>
-                        </div>
-                        <div class="flex flex-wrap gap-1 mt-1">
-                            {}
-                        </div>
-                        <span class="time-elapsed text-[10px] text-zinc-500 mt-1" data-timestamp="{}"></span>
-                    </div>
-                </div>
-                "#,
-                active_card_border,
-                video.display_name,
-                tags_csv,
-                encoded_filename,
-                compact_thumb_html,
-                file_size_str,
-                video.display_name,
-                video.format.as_str(),
-                rating_color,
-                rating_stars,
-                card_tags_html,
-                video.unix_timestamp
-            )
-        } else {
-            // Main page feed grid (standard vertical cards)
-            format!(
-                r#"
-                <div class="video-card group flex flex-col bg-[#181818] rounded-2xl cursor-pointer overflow-hidden hover:scale-[1.02] hover:shadow-2xl transition-all duration-200 border border-zinc-800/40"
-                     data-title="{}"
-                     data-tags="{}"
-                     onclick="window.location.href='/?v={}'">
-                    <!-- Standard Thumbnail -->
-                    <div class="relative w-full aspect-video bg-[#121212] flex items-center justify-center overflow-hidden">
-                        <div class="absolute inset-0 bg-black opacity-0 group-hover:opacity-10 transition-opacity duration-200 text-center"></div>
-                        {}
-                        <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-center">
-                            <div class="w-14 h-14 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center transform group-hover:scale-110 transition-transform duration-200">
-                                <svg class="w-8 h-8 text-white translate-x-0.5" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M8 5v14l11-7z"/>
-                                </svg>
-                            </div>
-                        </div>
-                        <span class="absolute bottom-2 right-2 bg-black/85 text-xs px-2 py-0.5 rounded-md font-semibold text-zinc-100 shadow-md">{}</span>
-                    </div>
-                    <!-- Details -->
-                    <div class="flex p-4 gap-3 bg-[#0f0f0f] border-t border-zinc-900">
-                        <div class="w-9 h-9 rounded-full bg-gradient-to-tr from-red-650 to-rose-500 flex-shrink-0 flex items-center justify-center font-bold text-white shadow-md text-sm">🦀</div>
-                        <div class="flex flex-col min-w-0 w-full">
-                            <h3 class="text-white text-sm font-semibold group-hover:text-red-500 transition-colors line-clamp-2 leading-tight">{}</h3>
-                            <div class="flex items-center gap-1.5 mt-1 text-[11px] text-zinc-400 font-medium">
-                                <span class="uppercase">{}</span>
-                                <span>•</span>
-                                <span class="{}">{}</span>
-                            </div>
-                            <div class="flex flex-wrap gap-1 mt-1.5">
-                                {}
-                            </div>
-                            <span class="time-elapsed text-[10px] text-zinc-500 mt-2 font-medium" data-timestamp="{}"></span>
-                        </div>
-                    </div>
-                </div>
-                "#,
-                video.display_name,
-                tags_csv,
-                encoded_filename,
-                main_thumb_html,
-                file_size_str,
-                video.display_name,
-                video.format.as_str(),
-                rating_color,
-                rating_stars,
-                card_tags_html,
-                video.unix_timestamp
-            )
-        };
-        video_cards_html.push_str(&card_class);
+    fn video(name: &str) -> VideoFile {
+        VideoFile {
+            file_name: format!("courses/{name}.mp4"),
+            display_name: name.to_owned(),
+            file_size_mb: 12,
+            unix_timestamp: 1,
+            format: VideoFormat::Mp4,
+            rating: Rating::Unrated,
+            tags: vec![Tag::Technology],
+            thumbnail_path: Some("courses/a & b.jpg".to_owned()),
+        }
     }
 
-    // --- Build pagination controls ---
-    let pagination_html = if total_pages > 1 {
-        let mut pag = String::new();
-        pag.push_str(r#"<div class="flex items-center justify-center gap-2 py-8">"#);
-
-        // Build the base query string for pagination links (preserving search & tag)
-        let mut base_query = String::new();
-        if !search_query.is_empty() {
-            base_query.push_str(&format!("&search={}", utf8_percent_encode(&search_query, NON_ALPHANUMERIC)));
+    fn query(search: &str) -> HomeQuery {
+        HomeQuery {
+            search: Some(search.to_owned()),
+            tag: None,
+            page: None,
+            v: None,
         }
-        if !tag_filter.is_empty() && tag_filter != "all" {
-            base_query.push_str(&format!("&tag={}", utf8_percent_encode(&tag_filter, NON_ALPHANUMERIC)));
-        }
-
-        // Previous button
-        if current_page > 1 {
-            pag.push_str(&format!(
-                r#"<a href="/?page={}{base_query}" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition-colors">← Prev</a>"#,
-                current_page - 1
-            ));
-        } else {
-            pag.push_str(r#"<span class="px-3 py-1.5 rounded-lg bg-zinc-900 text-zinc-600 text-sm font-medium cursor-not-allowed">← Prev</span>"#);
-        }
-
-        // Page numbers (show up to 7 pages with ellipsis)
-        let range_start = if current_page <= 3 { 1 } else { current_page - 2 };
-        let range_end = (range_start + 4).min(total_pages);
-        let range_start = if range_end == total_pages && total_pages >= 5 { total_pages - 4 } else { range_start };
-
-        if range_start > 1 {
-            pag.push_str(&format!(
-                r#"<a href="/?page=1{base_query}" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition-colors">1</a>"#
-            ));
-            if range_start > 2 {
-                pag.push_str(r#"<span class="text-zinc-600 text-sm px-1">…</span>"#);
-            }
-        }
-
-        for p in range_start..=range_end {
-            if p == current_page {
-                pag.push_str(&format!(
-                    r#"<span class="px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm font-bold shadow-lg shadow-red-600/20">{}</span>"#,
-                    p
-                ));
-            } else {
-                pag.push_str(&format!(
-                    r#"<a href="/?page={}{base_query}" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition-colors">{}</a>"#,
-                    p, p
-                ));
-            }
-        }
-
-        if range_end < total_pages {
-            if range_end < total_pages - 1 {
-                pag.push_str(r#"<span class="text-zinc-600 text-sm px-1">…</span>"#);
-            }
-            pag.push_str(&format!(
-                r#"<a href="/?page={}{base_query}" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition-colors">{}</a>"#,
-                total_pages, total_pages
-            ));
-        }
-
-        // Next button
-        if current_page < total_pages {
-            pag.push_str(&format!(
-                r#"<a href="/?page={}{base_query}" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition-colors">Next →</a>"#,
-                current_page + 1
-            ));
-        } else {
-            pag.push_str(r#"<span class="px-3 py-1.5 rounded-lg bg-zinc-900 text-zinc-600 text-sm font-medium cursor-not-allowed">Next →</span>"#);
-        }
-
-        pag.push_str("</div>");
-
-        // Results count
-        pag.push_str(&format!(
-            r#"<p class="text-center text-xs text-zinc-500 pb-4">Showing {}-{} of {} videos</p>"#,
-            if total_count > 0 { start_idx + 1 } else { 0 },
-            end_idx,
-            total_count
-        ));
-
-        pag
-    } else if total_count > 0 {
-        format!(
-            r#"<p class="text-center text-xs text-zinc-500 py-4">{} video(s)</p>"#,
-            total_count
-        )
-    } else {
-        String::new()
-    };
-
-    if video_cards_html.is_empty() {
-        video_cards_html = r#"
-            <div class="col-span-full flex flex-col items-center justify-center py-24 px-4 text-center">
-                <div class="w-16 h-16 rounded-full bg-zinc-800/40 flex items-center justify-center mb-4">
-                    <svg class="w-8 h-8 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-                </div>
-                <h3 class="text-zinc-300 font-bold text-lg">No Videos Available</h3>
-                <p class="text-zinc-500 text-sm mt-1 max-w-xs">Drop mp4, webm or mkv files in the served directory to instantly view them here.</p>
-            </div>
-            "#.to_string();
     }
 
-    let local_ip_addr = local_ip()
-        .map(|ip| ip.to_string())
-        .unwrap_or_else(|_| "0.0.0.0".to_string());
+    #[test]
+    fn search_matches_all_terms_across_title_filename_folder_and_tags() {
+        let videos = vec![video("Rust Basics"), video("Cooking")];
+        let template = HomeTemplate::new(&videos, query("  RUST   courses technology mp4  "), 8081);
+        assert_eq!(template.total_count, 1);
+        assert_eq!(template.cards[0].title, "Rust Basics");
+        assert_eq!(template.search_query, "RUST   courses technology mp4");
+        assert_eq!(
+            HomeTemplate::new(&videos, query("Rust cooking"), 8081).total_count,
+            0
+        );
+    }
 
-    let all_btn_class = if tag_filter.is_empty() || tag_filter == "all" {
-        "bg-red-600 text-white font-semibold"
-    } else {
-        "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-normal"
-    };
+    #[test]
+    fn filtering_happens_before_pagination_and_clamps_page() {
+        let mut videos: Vec<_> = (0..30).map(|i| video(&format!("Video {i}"))).collect();
+        videos.push(video("Unique"));
+        let mut search = query("unique");
+        search.page = Some(u32::MAX);
+        search.tag = Some("TECH".to_owned());
+        let template = HomeTemplate::new(&videos, search, 8081);
+        assert_eq!(template.current_page, 1);
+        assert_eq!(template.total_count, 1);
+        let mut search = query("video");
+        search.page = Some(2);
+        let template = HomeTemplate::new(&videos, search, 8081);
+        assert_eq!(template.cards.len(), 6);
+        assert!(template.previous_url.contains("search=video"));
+    }
+
+    #[test]
+    fn feed_escapes_metadata_and_never_embeds_video_players() {
+        let videos = vec![video("O'Brien & <script>alert(1)</script>")];
+        let html = HomeTemplate::new(&videos, query(""), 8081)
+            .render()
+            .expect("render feed");
+        assert!(!html.contains("<video"));
+        assert!(!html.contains("<script>alert(1)</script>"));
+        assert!(html.contains("loading=\"lazy\""));
+        assert!(html.contains("data-src=\"/video/courses/a%20%26%20b%2Ejpg\""));
+        assert!(html.contains("method=\"get\""));
+    }
 
     #[test]
     fn watch_page_loads_only_selected_video_and_preserves_filters() {
