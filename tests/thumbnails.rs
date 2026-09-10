@@ -44,6 +44,7 @@ impl Drop for Library {
     }
 }
 
+#[test]
 fn enabling_generation_panics_at_startup_if_ffmpeg_is_missing() {
     let library = Library::new();
     let output = Command::new(env!("CARGO_BIN_EXE_droptube"))
