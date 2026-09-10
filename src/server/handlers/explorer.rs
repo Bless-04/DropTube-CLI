@@ -50,20 +50,7 @@ async fn explorer_handler(
         Err(_) => return Ok(StatusCode::NOT_FOUND.into_response()),
     };
     if !target_path.starts_with(&state.movie_directory) {
-        return Ok((
-            StatusCode::FORBIDDEN,
-            Html("<h1>403 Forbidden</h1><p>Directory traversal access is denied.</p>".to_string()),
-        )
-            .into_response());
-    }
-
-    //  Check exists
-    if !target_path.exists() {
-        return Ok((
-            StatusCode::NOT_FOUND,
-            Html("<h1>404 Not Found</h1><p>File or folder does not exist.</p>".to_string()),
-        )
-            .into_response());
+        return Ok(StatusCode::FORBIDDEN.into_response());
     }
 
     // Check if Directory or File
@@ -72,7 +59,7 @@ async fn explorer_handler(
 
         // Render Back Button if in subdirectory
         if !decoded_sub_path.is_empty() {
-            let parent_path = StdPath::new(decoded_sub_path.as_ref())
+            let parent_path = StdPath::new(&decoded_sub_path)
                 .parent()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
@@ -148,7 +135,8 @@ async fn explorer_handler(
                         <td class="px-4 py-3 text-zinc-500">Folder</td>
                     </tr>
                     "#,
-                    encoded_path, folder
+                    encoded_path,
+                    escape_html(&folder)
                 ));
             }
 
@@ -207,7 +195,7 @@ async fn explorer_handler(
                         <td class="px-4 py-3 text-zinc-400">{}</td>
                     </tr>
                     "#,
-                    encoded_path, file, type_str, size_str, time_str
+                    encoded_path, escape_html(&file), escape_html(&type_str), size_str, time_str
                 ));
             }
         }
@@ -227,7 +215,7 @@ async fn explorer_handler(
             breadcrumbs_html.push_str(&format!(
                 r#" <span class="text-zinc-700">/</span> <a href="/explorer/{}" class="text-zinc-300 hover:text-red-500">{}</a>"#,
                 utf8_percent_encode(&accumulated, NON_ALPHANUMERIC),
-                segment
+                escape_html(segment)
             ));
         }
 
@@ -251,6 +239,17 @@ async fn explorer_handler(
         Ok(Redirect::temporary(&format!("/video/{}", encoded_file)).into_response())
     }
 }
+
+// Explorer rows still use HTML fragments; escape filesystem labels before rendering them.
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
