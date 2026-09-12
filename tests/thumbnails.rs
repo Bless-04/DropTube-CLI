@@ -83,8 +83,17 @@ async fn generation_is_disabled_by_default_and_sidecars_are_preserved() {
 #[tokio::test]
 async fn refresh_waits_for_the_scan_lock_and_publishes_new_files() {
 }
+
+/// Run with `DROPTUBE_TEST_FFMPEG` set to an FFmpeg executable, or FFmpeg on PATH.
 #[tokio::test]
 #[ignore = "requires FFmpeg: cargo test --test thumbnails -- --ignored"]
 async fn real_ffmpeg_generates_reuses_invalidates_and_handles_corrupt_videos() {
+    let library = Library::new();
+    let executable = std::env::var_os("DROPTUBE_TEST_FFMPEG")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| "ffmpeg".into());
+    let generator = ThumbnailGenerator::new(executable.clone())
+        .await
+        .expect("working FFmpeg");
     );
 }
