@@ -125,6 +125,23 @@ mod tests {
     fn test_generated_path_hidden_on_unix() {
         assert!(ThumbnailGenerator::GENERATED_PATH.starts_with('.')) // stuff starting with '.' are auto hidden on unix based systems
     }
+    #[test]
+    fn cache_paths_preserve_container_and_special_characters() {
+        assert_eq!(
+            thumbnail_path(Path::new("movies/a & b.mp4")).expect("path"),
+            PathBuf::from(format!(
+                "movies/{}/a & b.mp4.jpg",
+                ThumbnailGenerator::GENERATED_PATH
+            ))
+        );
+
+        assert_ne!(
+            thumbnail_path(Path::new("movies/a.mp4")).expect("path"),
+            thumbnail_path(Path::new("movies/a.mkv")).expect("path")
+        );
+        assert!(thumbnail_path(Path::new("")).is_err());
+    }
+
     #[tokio::test]
     async fn missing_ffmpeg_returns_an_error() {
         let result = ThumbnailGenerator::new(PathBuf::from("/droptube-missing-tools/ffmpeg")).await;
