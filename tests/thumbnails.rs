@@ -149,18 +149,33 @@ async fn real_ffmpeg_generates_reuses_invalidates_and_handles_corrupt_videos() {
     #[cfg(windows)]
     let original_directory_attributes = {
         use std::os::windows::fs::MetadataExt;
-        let directory = thumbnail.parent().expect("thumbnail directory");
+        let thumbnail_directory = thumbnail.parent().expect("thumbnail directory");
+        let directory = thumbnail_directory
+            .parent()
+            .expect("DropTube data directory");
         let attributes = fs::metadata(directory)
             .expect("directory metadata")
             .file_attributes();
-        assert_ne!(attributes & 0x2, 0, "new cache directory must be Hidden");
-        // Simulate a visible cache created by an older DropTube release.
+        assert_ne!(
+            attributes & 0x2,
+            0,
+            "new .droptube directory must be Hidden"
+        );
+        assert_eq!(
+            fs::metadata(thumbnail_directory)
+                .expect("thumbnail directory metadata")
+                .file_attributes()
+                & 0x2,
+            0,
+            "thumbnails must not have the Hidden attribute"
+        );
+        // Simulate a visible data directory created by an older DropTube release.
         let status = Command::new("attrib.exe")
-            .current_dir(directory.parent().expect("parent of cache"))
+            .current_dir(directory.parent().expect("parent of .droptube"))
             .arg("-H")
-            .arg(directory.file_name().expect("cache directory name"))
+            .arg(directory.file_name().expect("DropTube directory name"))
             .status()
-            .expect("unhide fixture cache");
+            .expect("unhide fixture data directory");
         assert!(status.success());
         assert_eq!(
             fs::metadata(directory)
@@ -189,13 +204,17 @@ async fn real_ffmpeg_generates_reuses_invalidates_and_handles_corrupt_videos() {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
-        let directory = thumbnail.parent().expect("thumbnail directory");
+        let directory = thumbnail
+            .parent()
+            .expect("thumbnail directory")
+            .parent()
+            .expect("DropTube data directory");
         assert_eq!(
             fs::metadata(directory)
                 .expect("directory metadata")
                 .file_attributes(),
             original_directory_attributes,
-            "cache reuse must restore Hidden without changing other attributes"
+            "cache reuse must restore Hidden on .droptube without changing other attributes"
         );
     }
 

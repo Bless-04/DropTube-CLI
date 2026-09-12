@@ -1,6 +1,7 @@
 //! Opt-in FFmpeg thumbnail generation. Callers serialize scans; FFmpeg runs asynchronously.
 
 use crate::droptube_dir;
+use crate::utils::prepare_droptube_directory;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Output, Stdio};
@@ -69,25 +70,25 @@ impl ThumbnailGenerator {
 
     /// Creates a 480×270 JPEG, or reuses one newer than the source video.
     ///
-    /// The cache lives beside the video in `.droptube-thumbnails`, with the full
+    /// The cache lives beside the video in `.droptube/thumbnails`, with the full
     /// video filename retained to distinguish containers with the same stem.
-    /// Its directory is dot-hidden on Unix and marked Hidden on Windows, including
-    /// existing cache directories encountered when reusing a thumbnail.
+    /// Its `.droptube` directory is dot-hidden on Unix and marked Hidden on
+    /// Windows, including existing data directories encountered during generation.
     /// Callers must serialize generation for the same source. A failed or cancelled
     /// decode never publishes a partial JPEG; timed-out/dropped children are killed.
     pub async fn generate_thumbnail(&self, source: &Path) -> io::Result<PathBuf> {
         let source = fs::canonicalize(source).await?;
         let destination = thumbnail_path(&source)?;
-        let parent = destination
+        let source_directory = source
             .parent()
-            .ok_or_else(|| io::Error::other("thumbnail has no parent directory"))?;
+            .ok_or_else(|| io::Error::other("video has no parent directory"))?;
         let source_modified = fs::metadata(&source).await?.modified()?;
         if let Ok(metadata) = fs::metadata(&destination).await
             && metadata.is_file()
             && metadata.len() > 0
             && metadata.modified()? >= source_modified
         {
-            prepare_thumbnail_directory(parent).await?;
+            prepare_thumbnail_directory(source_directory).await?;
             return Ok(destination);
         }
 
@@ -108,7 +109,7 @@ impl ThumbnailGenerator {
         {
             return Err(io::Error::other("FFmpeg produced no complete JPEG frame"));
         }
-        prepare_thumbnail_directory(parent).await?;
+        prepare_thumbnail_directory(source_directory).await?;
         let temporary = destination.with_extension("jpg.tmp");
         fs::write(&temporary, output.stdout).await?;
         fs::rename(&temporary, &destination).await?;
@@ -116,51 +117,9 @@ impl ThumbnailGenerator {
     }
 }
 
-async fn prepare_thumbnail_directory(directory: &Path) -> io::Result<()> {
-    fs::create_dir_all(directory).await?;
-    // The leading dot already hides this directory on Unix. Windows also needs
-    // FILE_ATTRIBUTE_HIDDEN; use its built-in utility without a shell or unsafe FFI.
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
-
-        if fs::metadata(directory).await?.file_attributes() & FILE_ATTRIBUTE_HIDDEN == 0 {
-            let parent = directory
-                .parent()
-                .ok_or_else(|| io::Error::other("thumbnail directory has no parent"))?;
-            let name = directory
-                .file_name()
-                .ok_or_else(|| io::Error::other("thumbnail directory has no name"))?;
-            let mut command = Command::new("attrib.exe");
-            // attrib does not accept Rust's canonical \\?\ paths. Pass the literal
-            // directory name relative to its parent instead of stripping path prefixes.
-            command.current_dir(parent).arg("+H").arg(name);
-            let output = run_command(&mut command, Duration::from_secs(5))
-                .await
-                .map_err(|error| {
-                    io::Error::new(
-                        error.kind(),
-                        format!(
-                            "Could not hide thumbnail directory '{}': {error}",
-                            directory.display()
-                        ),
-                    )
-                })?;
-            if !output.status.success()
-                || fs::metadata(directory).await?.file_attributes() & FILE_ATTRIBUTE_HIDDEN == 0
-            {
-                return Err(io::Error::other(format!(
-                    "Could not hide thumbnail directory '{}': attrib exited with {}. {} {}",
-                    directory.display(),
-                    output.status,
-                    String::from_utf8_lossy(&output.stdout).trim(),
-                    String::from_utf8_lossy(&output.stderr).trim()
-                )));
-            }
-        }
-    }
-    Ok(())
+async fn prepare_thumbnail_directory(parent: &Path) -> io::Result<()> {
+    prepare_droptube_directory(parent).await?;
+    fs::create_dir_all(parent.join(ThumbnailGenerator::GENERATED_PATH)).await
 }
 
 async fn run_command(command: &mut Command, limit: Duration) -> io::Result<Output> {
@@ -188,6 +147,7 @@ fn thumbnail_path(source: &Path) -> io::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     #[test]
     fn test_generated_path_hidden_on_unix() {
@@ -208,6 +168,56 @@ mod tests {
             thumbnail_path(Path::new("movies/a.mkv")).expect("path")
         );
         assert!(thumbnail_path(Path::new("")).is_err());
+    }
+
+    #[tokio::test]
+    async fn prepares_thumbnails_under_the_droptube_directory() {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+        let parent = std::env::temp_dir().join(format!(
+            "droptube-thumbnail-directory-test-{}-{}",
+            std::process::id(),
+            NEXT_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&parent).await.expect("create test parent");
+
+        prepare_thumbnail_directory(&parent)
+            .await
+            .expect("prepare thumbnail directory");
+        let droptube_directory = parent.join(crate::utils::DROPTUBE_DIRECTORY);
+        let thumbnail_directory = droptube_directory.join("thumbnails");
+        assert!(
+            fs::metadata(&thumbnail_directory)
+                .await
+                .expect("thumbnail directory metadata")
+                .is_dir()
+        );
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            assert_ne!(
+                fs::metadata(&droptube_directory)
+                    .await
+                    .expect("DropTube directory metadata")
+                    .file_attributes()
+                    & 0x2,
+                0,
+                ".droptube must have the Hidden attribute"
+            );
+            assert_eq!(
+                fs::metadata(&thumbnail_directory)
+                    .await
+                    .expect("thumbnail directory metadata")
+                    .file_attributes()
+                    & 0x2,
+                0,
+                "the thumbnails child directory must not have the Hidden attribute"
+            );
+        }
+
+        fs::remove_dir_all(parent)
+            .await
+            .expect("remove test parent");
     }
 
     #[tokio::test]

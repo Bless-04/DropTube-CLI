@@ -89,9 +89,10 @@ Existing same-stem JPG/JPEG/PNG/WebP sidecars take priority. For videos without 
 the first 30 frames and creates a 480×270 JPEG. Short videos are supported. Generated files live in
 `.droptube/thumbnails` beside each video, named with the full filename (for example,
 `.droptube/thumbnails/movie.mp4.jpg`). The cache is reused while it is newer than the source and regenerated when the
-source changes. Keep the flag enabled on subsequent launches to use this generated cache. The cache directory is hidden
-by default: its dot-prefixed name hides it on macOS/Linux, and DropTube sets the Hidden attribute on Windows. Existing
-visible cache directories are also marked Hidden when their thumbnails are next reused or generated.
+source changes. Keep the flag enabled on subsequent launches to use this generated cache. The `.droptube` data
+directory is hidden by default: its dot-prefixed name hides it on macOS/Linux, and DropTube sets the Hidden attribute on
+Windows. Existing visible `.droptube` directories are also marked Hidden when their thumbnails are next reused or
+generated.
 
 Generation runs one video at a time without blocking the async runtime. Each decode has a 30-second timeout. Unreadable
 or corrupt videos log a warning and keep their placeholder; they do not stop the library from loading. The initial scan
