@@ -82,6 +82,20 @@ async fn generation_is_disabled_by_default_and_sidecars_are_preserved() {
 
 #[tokio::test]
 async fn refresh_waits_for_the_scan_lock_and_publishes_new_files() {
+    let library = Library::new();
+    let state = library.state(None);
+    let guard = state.scan_lock.lock().await;
+    let refresh = state.refresh_index();
+    tokio::pin!(refresh);
+    assert!(matches!(
+        std::future::poll_fn(|context| std::task::Poll::Ready(refresh.as_mut().poll(context)))
+            .await,
+        std::task::Poll::Pending
+    ));
+    fs::write(library.0.join("new.mp4"), b"video").expect("write video");
+    drop(guard);
+    refresh.await.expect("refresh finishes");
+    assert_eq!(state.index_cache.read().await.len(), 1);
 }
 
 /// Run with `DROPTUBE_TEST_FFMPEG` set to an FFmpeg executable, or FFmpeg on PATH.
