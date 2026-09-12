@@ -1,6 +1,7 @@
 mod directories;
 
-pub use directories::{DROPTUBE_DIRECTORY, prepare_droptube_directory};
+pub use crate::config::constants::DROPTUBE_DIRECTORY;
+pub use directories::prepare_droptube_directory;
 
 /// holds functions that print display to the user through the Command Line Interface
 pub mod display;

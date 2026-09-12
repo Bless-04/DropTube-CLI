@@ -1,5 +1,5 @@
+use crate::config::constants::DROPTUBE_DIRECTORY;
 use crate::models::video::{Rating, Tag, VideoFile, VideoFormat};
-use crate::utils::DROPTUBE_DIRECTORY;
 use log::warn;
 use std::fs;
 use std::path::{Path as StdPath, PathBuf};

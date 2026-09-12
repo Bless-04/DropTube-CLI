@@ -1,12 +1,9 @@
 //! Creation and platform-specific setup for DropTube data directories.
 
-use crate::droptube_dir;
+use crate::config::constants::DROPTUBE_DIRECTORY;
 use std::io;
 use std::path::{Path, PathBuf};
 use tokio::fs;
-
-/// The name of the generated DropTube data directory.
-pub const DROPTUBE_DIRECTORY: &str = droptube_dir!("");
 
 /// Ensures that a `.droptube` directory exists inside `parent`.
 ///

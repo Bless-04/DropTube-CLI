@@ -179,7 +179,7 @@ async fn main() {
     let background_state = state.clone();
     tokio::spawn(async move {
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+            tokio::time::sleep(tokio::time::Duration::from_mins(5)).await; //refresh index every 5 mins ; todo this should be opt in and be controlled by a cli flag called 
             if let Err(error) = background_state.refresh_index().await {
                 warn!("Background scan failed: {error}");
             }
