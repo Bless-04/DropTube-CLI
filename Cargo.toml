@@ -8,14 +8,14 @@ repository = "https://github.com/Bless-04/DropTube-CLI"
 [dependencies]
 axum = "0.8.9"
 tokio = { version = "1", features = ["full"] }
-tower-http = { version = "0.7.0", features = ["fs", "trace", "catch-panic"] }
-local-ip-address = "0.6"
-percent-encoding = "2.3"
-serde = { version = "1.0", features = ["derive"] }
-log = "0.4.33"
-stderrlog = "0.6"
-clap = { version = "4.6.4", features = ["derive"] }
-askama = "0.16.0"
+tower-http = { version = "0.7.1", features = ["fs", "trace", "catch-panic"] }
+local-ip-address = "0.6.13"
+percent-encoding = "2.3.2"
+serde = { version = "1.0.229", features = ["derive"] }
+log = "0.4.34"
+stderrlog = "0.6.0"
+clap = { version = "4.6.6", features = ["derive"] }
+askama = "0.16.1"
 rust-embed = "8.12.0"
 mime_guess = "2.0.5"
 qr2term = "0.3.3"
