@@ -103,13 +103,13 @@ async fn main() {
         }
     };
 
-    let thumbnails = if args.generate_thumbnails {
+    let thumbnails = if args.thumbnails {
         let executable = args.ffmpeg_path.clone().unwrap_or_else(|| "ffmpeg".into());
         match ThumbnailGenerator::new(executable.clone()).await {
             Ok(generator) => Some(generator),
             // cant enable thumbnails if FFmpeg isnt found. and fails early
             Err(error) => panic!(
-                "--generate-thumbnails requires FFmpeg; could not use '{}': {error}. Install FFmpeg on PATH or pass --ffmpeg-path.",
+                "--thumbnails requires FFmpeg; could not use '{}': {error}. Install FFmpeg on PATH or pass --ffmpeg-path.",
                 executable.display()
             ),
         }

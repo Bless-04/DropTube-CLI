@@ -49,7 +49,7 @@ fn enabling_generation_panics_at_startup_if_ffmpeg_is_missing() {
     let library = Library::new();
     let output = Command::new(env!("CARGO_BIN_EXE_droptube"))
         .arg(&library.0)
-        .arg("--generate-thumbnails")
+        .arg("--thumbnails")
         .arg("--ffmpeg-path")
         .arg(library.0.join("not-installed-ffmpeg"))
         .output()
@@ -57,10 +57,7 @@ fn enabling_generation_panics_at_startup_if_ffmpeg_is_missing() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("System panic detected"), "{stderr}");
-    assert!(
-        stderr.contains("--generate-thumbnails requires FFmpeg"),
-        "{stderr}"
-    );
+    assert!(stderr.contains("--thumbnails requires FFmpeg"), "{stderr}");
 }
 
 #[tokio::test]
@@ -228,7 +225,10 @@ async fn real_ffmpeg_generates_reuses_invalidates_and_handles_corrupt_videos() {
     assert!(
         !library
             .0
-            .join( format!("{}/corrupt.mp4.jpg",ThumbnailGenerator::GENERATED_PATH))
+            .join(format!(
+                "{}/corrupt.mp4.jpg",
+                ThumbnailGenerator::GENERATED_PATH
+            ))
             .exists()
     );
     let sidecar = source.with_extension("jpg");

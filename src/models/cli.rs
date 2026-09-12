@@ -16,12 +16,12 @@ pub struct CliArgs {
     #[arg(short = 'p', long = "port")]
     pub port: Option<u16>,
 
-    /// Generate missing thumbnails with FFmpeg. Panics at startup if FFmpeg is unavailable.
+    /// Generate missing thumbnails with FFmpeg. Will fail at startup if FFmpeg is unavailable.
     #[arg(long)]
-    pub generate_thumbnails: bool,
+    pub thumbnails: bool,
 
-    /// FFmpeg executable to use (otherwise resolved from PATH). Requires --generate-thumbnails.
-    #[arg(long, requires = "generate_thumbnails")]
+    /// FFmpeg executable to use (otherwise resolved from PATH). Requires --thumbnails.
+    #[arg(long, requires = "thumbnails")]
     pub ffmpeg_path: Option<PathBuf>,
 
     /// Root path for files (default: current directory).
@@ -62,7 +62,7 @@ mod tests {
         assert_eq!(args.port, None);
         assert_eq!(args.path, PathBuf::from("./test"));
         assert_eq!(args.max_depth, 0);
-        assert!(!args.generate_thumbnails);
+        assert!(!args.thumbnails);
         assert!(args.ffmpeg_path.is_none());
     }
 
@@ -89,14 +89,10 @@ mod tests {
 
     #[test]
     fn thumbnail_generation_is_explicitly_enabled() {
-        let args = CliArgs::try_parse_from([
-            EXECUTABLE,
-            "--generate-thumbnails",
-            "--ffmpeg-path",
-            "tools/ffmpeg",
-        ])
-        .expect("valid thumbnail options");
-        assert!(args.generate_thumbnails);
+        let args =
+            CliArgs::try_parse_from([EXECUTABLE, "--thumbnails", "--ffmpeg-path", "tools/ffmpeg"])
+                .expect("valid thumbnail options");
+        assert!(args.thumbnails);
         assert_eq!(args.ffmpeg_path, Some(PathBuf::from("tools/ffmpeg")));
         assert!(CliArgs::try_parse_from([EXECUTABLE, "--ffmpeg-path", "ffmpeg"]).is_err());
     }
