@@ -67,6 +67,13 @@ droptube --depth 255 --port 9000 /path/to/movies
 ### Optional FFmpeg thumbnails
 
 Thumbnail generation is **off by default**. To enable it, install [FFmpeg](https://ffmpeg.org/download.html) and run:
+
+```bash
+droptube --generate-thumbnails --depth 255 /path/to/movies
+
+# Windows: use an explicit executable if FFmpeg is not on PATH
+droptube.exe --generate-thumbnails --ffmpeg-path "C:\Tools\ffmpeg\bin\ffmpeg.exe" "D:\Movies"
+```
 ---
 
 ## 🏷️ Naming Conventions & Metadata
