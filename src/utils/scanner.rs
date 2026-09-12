@@ -1,5 +1,5 @@
 use crate::models::video::{Rating, Tag, VideoFile, VideoFormat};
-use crate::utils::thumbnails::ThumbnailGenerator;
+use crate::utils::DROPTUBE_DIRECTORY;
 use log::warn;
 use std::fs;
 use std::path::{Path as StdPath, PathBuf};
@@ -122,7 +122,7 @@ pub fn scan_directory(params: &mut ScanDirectoryParams) {
         let e_path = entry.path();
 
         // Skip cache and links: linked directories can loop or leave the library.
-        if entry.file_name().eq(ThumbnailGenerator::GENERATED_PATH)
+        if entry.file_name().eq(DROPTUBE_DIRECTORY)
             || entry.file_type().is_ok_and(|kind| kind.is_symlink())
         {
             continue;
