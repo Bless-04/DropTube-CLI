@@ -1,5 +1,6 @@
 //! Opt-in FFmpeg thumbnail generation. Callers serialize scans; FFmpeg runs asynchronously.
 
+use crate::droptube_dir;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Output, Stdio};
@@ -14,7 +15,7 @@ pub struct ThumbnailGenerator {
 
 impl ThumbnailGenerator {
     /// The generated path for the thumbnails made by ffmpeg
-    pub const GENERATED_PATH: &str = ".droptube/thumbnails";
+    pub const GENERATED_PATH: &str = droptube_dir!("/thumbnails");
 
     /// FFmpeg configuration args
     pub const CONFIG_ARGS: [&'static str; 7] = [
