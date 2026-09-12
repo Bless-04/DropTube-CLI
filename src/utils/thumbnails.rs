@@ -115,6 +115,73 @@ impl ThumbnailGenerator {
     }
 }
 
+async fn prepare_thumbnail_directory(directory: &Path) -> io::Result<()> {
+    fs::create_dir_all(directory).await?;
+    // The leading dot already hides this directory on Unix. Windows also needs
+    // FILE_ATTRIBUTE_HIDDEN; use its built-in utility without a shell or unsafe FFI.
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+
+        if fs::metadata(directory).await?.file_attributes() & FILE_ATTRIBUTE_HIDDEN == 0 {
+            let parent = directory
+                .parent()
+                .ok_or_else(|| io::Error::other("thumbnail directory has no parent"))?;
+            let name = directory
+                .file_name()
+                .ok_or_else(|| io::Error::other("thumbnail directory has no name"))?;
+            let mut command = Command::new("attrib.exe");
+            // attrib does not accept Rust's canonical \\?\ paths. Pass the literal
+            // directory name relative to its parent instead of stripping path prefixes.
+            command.current_dir(parent).arg("+H").arg(name);
+            let output = run_command(&mut command, Duration::from_secs(5))
+                .await
+                .map_err(|error| {
+                    io::Error::new(
+                        error.kind(),
+                        format!(
+                            "Could not hide thumbnail directory '{}': {error}",
+                            directory.display()
+                        ),
+                    )
+                })?;
+            if !output.status.success()
+                || fs::metadata(directory).await?.file_attributes() & FILE_ATTRIBUTE_HIDDEN == 0
+            {
+                return Err(io::Error::other(format!(
+                    "Could not hide thumbnail directory '{}': attrib exited with {}. {} {}",
+                    directory.display(),
+                    output.status,
+                    String::from_utf8_lossy(&output.stdout).trim(),
+                    String::from_utf8_lossy(&output.stderr).trim()
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn run_command(command: &mut Command, limit: Duration) -> io::Result<Output> {
+    command.stdin(Stdio::null()).kill_on_drop(true);
+    // Avoid console windows when the server is launched as a desktop/background process.
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000);
+    timeout(limit, command.output())
+        .await
+        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "Child process timed out"))?
+}
+
+fn thumbnail_path(source: &Path) -> io::Result<PathBuf> {
+    let parent = source
+        .parent()
+        .ok_or_else(|| io::Error::other("video has no parent directory"))?;
+    let mut name = source
+        .file_name()
+        .ok_or_else(|| io::Error::other("video has no filename"))?
+        .to_os_string();
+    name.push(".jpg");
+    Ok(parent.join(ThumbnailGenerator::GENERATED_PATH).join(name))
 }
 
 #[cfg(test)]
