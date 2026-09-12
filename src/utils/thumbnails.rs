@@ -14,9 +14,9 @@ pub struct ThumbnailGenerator {
 
 impl ThumbnailGenerator {
     /// The generated path for the thumbnails made by ffmpeg
-    pub const GENERATED_PATH: &str = ".droptube-thumbnails";
+    pub const GENERATED_PATH: &str = ".droptube/thumbnails";
 
-    /// ffmpeg configuration args
+    /// FFmpeg configuration args
     pub const CONFIG_ARGS: [&'static str; 7] = [
         "-hide_banner",
         "-loglevel",
@@ -27,7 +27,7 @@ impl ThumbnailGenerator {
         "-i",
     ];
 
-    /// ffmpeg Args to generate the thumbnail
+    /// FFmpeg Args to generate the thumbnail
     pub const GENERATION_ARGS: [&'static str; 19] = [
         "-map",
         "0:v:0",
