@@ -6,6 +6,7 @@ use axum::Router;
 use droptube::config::constants::DEFAULT_PORT;
 use droptube::config::logger::create_log;
 use droptube::models::cli;
+use droptube::models::cli::CliArgs;
 use droptube::models::state::AppState;
 use droptube::server::create_router;
 use droptube::utils::display;
@@ -80,16 +81,6 @@ async fn main() {
     let args = cli::get();
     let src_dir = args.path.clone();
     let explicit_port = args.port;
-
-    // Validate directory
-    if !src_dir.exists() {
-        error!("Directory '{}' does not exist.", src_dir.display());
-        std::process::exit(1);
-    }
-    if !src_dir.is_dir() {
-        error!("'{}' is not a directory.", src_dir.display());
-        std::process::exit(1);
-    }
 
     let canonical_dir = match src_dir.canonicalize() {
         Ok(p) => p,

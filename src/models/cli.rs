@@ -1,4 +1,5 @@
 use clap::Parser;
+use log::error;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
@@ -17,7 +18,7 @@ pub struct CliArgs {
     pub port: Option<u16>,
 
     /// Generate missing thumbnails with FFmpeg. Will fail at startup if FFmpeg is unavailable.
-    #[arg(long="use-thumbnails")]
+    #[arg(long = "use-thumbnails")]
     pub thumbnails: bool,
 
     /// FFmpeg executable to use (otherwise resolved from PATH). Requires --thumbnails.
@@ -25,8 +26,26 @@ pub struct CliArgs {
     pub ffmpeg_path: Option<PathBuf>,
 
     /// Root path for files (default: current directory).
-    #[arg(default_value = "./")]
+    #[arg(default_value = "./", value_parser = CliArgs::validate_dir)]
     pub path: PathBuf,
+}
+
+/// Startup Validation
+impl CliArgs {
+    fn validate_dir(path_str: &str) -> Result<PathBuf, String> {
+        let path = PathBuf::from(path_str);
+
+        if !path.exists() {
+            return Err(format!("The directory path '{path_str}' does not exist."));
+        }
+
+        if !path.is_dir() {
+            return Err(format!("The path '{path_str}' exists, but it is not a directory."));
+        }
+
+        Ok(path)
+    
+    }
 }
 
 /// Global singleton for the parsed CLI args, initialised lazily from `std::env::args`.
