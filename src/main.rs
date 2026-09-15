@@ -100,7 +100,7 @@ async fn main() {
             Ok(generator) => Some(generator),
             // cant enable thumbnails if FFmpeg isnt found. and fails early
             Err(error) => panic!(
-                "--thumbnails requires FFmpeg; could not use '{}': {error}. Install FFmpeg on PATH or pass --ffmpeg-path.",
+                "creating or using thumbnails requires FFmpeg; could not use '{}': {error}. Install FFmpeg on PATH or pass --ffmpeg-path.",
                 executable.display()
             ),
         }
