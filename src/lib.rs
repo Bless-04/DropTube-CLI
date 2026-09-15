@@ -10,6 +10,9 @@ pub mod models;
 /// module for axum routing and endpoint handling
 pub mod server;
 
+/// Optional terminal user interface.
+pub mod tui;
+
 /// module used for macros
 pub mod macros;
 /// module for functions to make life easier
