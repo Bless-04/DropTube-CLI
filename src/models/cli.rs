@@ -32,6 +32,7 @@ pub struct CliArgs {
 
 /// Startup Validation
 impl CliArgs {
+    /// Validates the directory passed by args
     fn validate_dir(path_str: &str) -> Result<PathBuf, String> {
         let path = PathBuf::from(path_str);
 
