@@ -1,9 +1,11 @@
-use crate::config::constants::HTML_SOURCE;
 use crate::models::state::AppState;
+use crate::models::video::VideoFormat;
+use crate::server::handlers::TemplateError;
+use askama::Template;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::{Html, IntoResponse, Redirect},
+    response::{Html, IntoResponse, Redirect, Response},
 };
 use local_ip_address::local_ip;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
@@ -11,8 +13,20 @@ use std::fs;
 use std::path::Path as StdPath;
 use std::time::SystemTime;
 
+#[derive(Template)]
+#[template(path = "explorer.html")]
+pub struct ExplorerTemplate {
+    pub search_query: String,
+    pub breadcrumbs_html: String,
+    pub entries_html: String,
+    pub local_ip: String,
+    pub port: u16,
+}
+
 /// Explorer Root routing helper
-pub async fn explorer_root_handler(State(state): State<AppState>) -> impl IntoResponse {
+pub async fn explorer_root_handler(
+    State(state): State<AppState>,
+) -> Result<Response, TemplateError> {
     explorer_handler(State(state), Path(String::new())).await
 }
 
@@ -20,7 +34,7 @@ pub async fn explorer_root_handler(State(state): State<AppState>) -> impl IntoRe
 pub async fn explorer_path_handler(
     State(state): State<AppState>,
     Path(path): Path<String>,
-) -> impl IntoResponse {
+) -> Result<Response, TemplateError> {
     explorer_handler(State(state), Path(path)).await
 }
 
@@ -28,33 +42,33 @@ pub async fn explorer_path_handler(
 async fn explorer_handler(
     State(state): State<AppState>,
     Path(sub_path): Path<String>,
-) -> impl IntoResponse {
-    // 1. Percent-decode the sub-path
+) -> Result<Response, TemplateError> {
+    // Percent-decode the sub-path
     let decoded_sub_path = percent_encoding::percent_decode_str(&sub_path)
         .decode_utf8()
-        .unwrap_or(std::borrow::Cow::Borrowed(""));
+        .unwrap_or_else(|_| std::borrow::Cow::Borrowed(""));
 
-    // 2. Safe path join
+    // Safe path join
     let target_path = state.movie_directory.join(decoded_sub_path.as_ref());
-    // 3. Prevent path traversal attack
+    // Prevent path traversal attack
     if !target_path.starts_with(&state.movie_directory) {
-        return (
+        return Ok((
             StatusCode::FORBIDDEN,
             Html("<h1>403 Forbidden</h1><p>Directory traversal access is denied.</p>".to_string()),
         )
-            .into_response();
+            .into_response());
     }
 
-    // 4. Check existence
+    //  Check exists
     if !target_path.exists() {
-        return (
+        return Ok((
             StatusCode::NOT_FOUND,
             Html("<h1>404 Not Found</h1><p>File or folder does not exist.</p>".to_string()),
         )
-            .into_response();
+            .into_response());
     }
 
-    // 5. Check if Directory or File
+    // Check if Directory or File
     if target_path.is_dir() {
         let mut entries_html = String::new();
 
@@ -164,12 +178,11 @@ async fn explorer_handler(
                     .map(|s| s.to_lowercase())
                     .unwrap_or_default();
 
-                let type_str =
-                    if ["mp4", "mkv", "webm", "mov", "avi", "m4v"].contains(&ext.as_str()) {
-                        format!("Video ({})", ext)
-                    } else {
-                        ext.clone()
-                    };
+                let type_str = if VideoFormat::SUPPORTED_EXTS.contains(&ext.as_str()) {
+                    format!("Video ({})", ext)
+                } else {
+                    ext.clone()
+                };
 
                 let time_str = modified
                     .ok()
@@ -220,62 +233,23 @@ async fn explorer_handler(
             ));
         }
 
-        let explorer_layout = format!(
-            r#"
-            <div class="max-w-7xl mx-auto px-4 py-8">
-                <!-- Navigation Breadcrumbs -->
-                <div class="flex items-center gap-2 text-xs md:text-sm bg-zinc-900/40 border border-zinc-800 rounded-xl px-4 py-3 mb-6">
-                    <span class="text-zinc-500 font-bold uppercase tracking-wider text-[10px] mr-2">path:</span>
-                    {}
-                </div>
-
-                <div class="flex items-center justify-between mb-6">
-                    <h2 class="text-white text-lg md:text-xl font-bold tracking-tight flex items-center gap-2">
-                        <span class="w-1.5 h-6 bg-amber-500 rounded-full"></span>
-                        File Explorer
-                    </h2>
-                    <a href="/" class="inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-700 active:scale-95 text-white font-medium px-4 py-1.5 rounded-full transition-all text-xs">
-                        🎬 Video Mode
-                    </a>
-                </div>
-
-                <!-- Explorer Table -->
-                <div class="bg-[#141414] border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-xs md:text-sm">
-                            <thead class="bg-[#1a1a1a] text-zinc-400 font-bold border-b border-zinc-800 text-[11px] uppercase tracking-wider">
-                                <tr>
-                                    <th class="px-4 py-3.5">Name</th>
-                                    <th class="px-4 py-3.5">Type</th>
-                                    <th class="px-4 py-3.5">Size</th>
-                                    <th class="px-4 py-3.5">Last Modified</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-zinc-900">
-                                {}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-            "#,
-            breadcrumbs_html, entries_html
-        );
-
         let local_ip_addr = local_ip()
             .map(|ip| ip.to_string())
             .unwrap_or_else(|_| "0.0.0.0".to_string());
 
-        let full_html = HTML_SOURCE
-            .replace("{{LOCAL_IP}}", &local_ip_addr)
-            .replace("{{PORT}}", &state.port.to_string())
-            .replace("{{TAG_FILTERS}}", "")
-            .replace("{{CONTENT}}", &explorer_layout);
+        let template = ExplorerTemplate {
+            search_query: String::new(),
+            breadcrumbs_html,
+            entries_html,
+            local_ip: local_ip_addr,
+            port: state.port,
+        };
 
-        Html(full_html).into_response()
+        let full_html = template.render()?;
+        Ok(Html(full_html).into_response())
     } else {
         // Redirect to the static /video endpoint
         let encoded_file = utf8_percent_encode(&decoded_sub_path, NON_ALPHANUMERIC).to_string();
-        Redirect::temporary(&format!("/video/{}", encoded_file)).into_response()
+        Ok(Redirect::temporary(&format!("/video/{}", encoded_file)).into_response())
     }
 }

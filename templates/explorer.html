@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block search_value %}{% endblock %}
+
+{% block category_filters %}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <!-- Navigation Breadcrumbs -->
+    <div class="flex items-center gap-2 text-xs md:text-sm bg-zinc-900/40 border border-zinc-800 rounded-xl px-4 py-3 mb-6">
+        <span class="text-zinc-500 font-bold uppercase tracking-wider text-[10px] mr-2">path:</span>
+        {{ breadcrumbs_html|safe }}
+    </div>
+
+    <div class="flex items-center justify-between mb-6">
+        <h2 class="text-white text-lg md:text-xl font-bold tracking-tight flex items-center gap-2">
+            <span class="w-1.5 h-6 bg-amber-500 rounded-full"></span>
+            File Explorer
+        </h2>
+        <a href="/" class="inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-700 active:scale-95 text-white font-medium px-4 py-1.5 rounded-full transition-all text-xs">
+            🎬 Video Mode
+        </a>
+    </div>
+
+    <!-- Explorer Table -->
+    <div class="bg-[#141414] border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs md:text-sm">
+                <thead class="bg-[#1a1a1a] text-zinc-400 font-bold border-b border-zinc-800 text-[11px] uppercase tracking-wider">
+                    <tr>
+                        <th class="px-4 py-3.5">Name</th>
+                        <th class="px-4 py-3.5">Type</th>
+                        <th class="px-4 py-3.5">Size</th>
+                        <th class="px-4 py-3.5">Last Modified</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-900">
+                    {{ entries_html|safe }}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

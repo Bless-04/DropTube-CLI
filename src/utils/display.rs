@@ -1,4 +1,5 @@
 use std::path::Display;
+use log::error;
 
 /// Prints the canonical directory being served.
 pub fn serving_dir(canonical_dir: Display<'_>) {
@@ -25,8 +26,12 @@ pub fn local_urls(local_ip_addr: String, port: u16) {
         "🚀 Local Access      : \x1b[1;35mhttp://localhost:{}\x1b[0m",
         port
     );
-    println!(
-        "📱 Mobile Stream LAN : \x1b[1;35mhttp://{}:{}\x1b[0m",
-        local_ip_addr, port
-    );
+
+    let network_url = format!("http://{}:{}", local_ip_addr, port);
+    println!("📱 Mobile Stream LAN : \x1b[1;35m{}\x1b[0m\n", network_url);
+
+    // Print QR code for the network URL
+    if let Err(e) = qr2term::print_qr(&network_url) {
+        error!("Failed to generate QR code: {}", e);
+    }
 }

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block search_value %}{{ search_query }}{% endblock %}
+
+{% block category_filters %}
+<div class="bg-[#0f0f0f] border-b border-zinc-900 py-3 px-4 flex gap-2 overflow-x-auto scrollbar-thin max-w-7xl mx-auto w-full select-none">
+    <button onclick="filterByTag('all')"
+        class="tag-btn {{ all_btn_class }} text-xs px-4 py-1.5 rounded-full active:scale-95 transition-all flex-shrink-0">
+        All
+    </button>
+    {{ tag_filters_html|safe }}
+</div>
+{% endblock %}
+
+{% block content %}
+    {% if has_active %}
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-7xl mx-auto py-0 md:py-6">
+        {{ player_html|safe }}
+        <div class="lg:col-span-1 p-4 md:p-0 flex flex-col gap-4">
+            <h3 class="text-white text-base font-bold tracking-tight border-b border-zinc-800 pb-2">Up Next</h3>
+            <div class="flex flex-col gap-2 overflow-y-auto max-h-[600px] pr-1 scrollbar-thin">
+                {{ video_cards_html|safe }}
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="max-w-7xl mx-auto px-4 py-8">
+        <h2 class="text-white text-lg md:text-xl font-bold tracking-tight mb-6 flex items-center gap-2">
+            <span class="w-1.5 h-6 bg-red-600 rounded-full"></span>
+            Local Video Feed
+        </h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {{ video_cards_html|safe }}
+        </div>
+        {{ pagination_html|safe }}
+    </div>
+    {% endif %}
+{% endblock %}
