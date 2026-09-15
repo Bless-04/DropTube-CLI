@@ -17,7 +17,7 @@ pub struct CliArgs {
     pub port: Option<u16>,
 
     /// Generate missing thumbnails with FFmpeg. Will fail at startup if FFmpeg is unavailable.
-    #[arg(long)]
+    #[arg(long="use-thumbnails")]
     pub thumbnails: bool,
 
     /// FFmpeg executable to use (otherwise resolved from PATH). Requires --thumbnails.
