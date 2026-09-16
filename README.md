@@ -56,6 +56,9 @@ Options:
       --ffmpeg-path <FFMPEG_PATH>
           FFmpeg executable to use instead of PATH. Requires --thumbnails.
 
+      --open-tui
+          Open the interactive terminal interface while the server runs.
+
   -h, --help
           Print help (see a summary with '-h')
 
@@ -68,7 +71,19 @@ Options:
 ```bash
 # Serve movies recursively from subfolders on port 9000
 droptube --depth 255 --port 9000 /path/to/movies
+
+# Opt into the terminal dashboard
+droptube --open-tui /path/to/movies
 ```
+
+The terminal dashboard is strictly opt-in. Without `--open-tui`, DropTube keeps its existing
+headless command-line behavior. The dashboard lists every client IP observed since startup: green
+means the IP currently has a live TCP connection, while red means its last connection has closed.
+Use the arrow keys or Tab to move between Dashboard, Logs, and QR Code, or press `1`, `2`, or `3`
+to open a page directly. Page Up/Page Down scroll longer client and log lists. Home/End jump through
+the client list, while End returns the Logs page to its live tail. Application logs are captured and
+rendered by `tui-logger` in the Logs page so they do not overwrite the client list. Press `q`, Escape,
+or Ctrl+C to stop the dashboard and server gracefully.
 
 ### Optional FFmpeg thumbnails
 
