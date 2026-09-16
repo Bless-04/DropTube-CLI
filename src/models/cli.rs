@@ -1,5 +1,4 @@
 use clap::Parser;
-use log::error;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
@@ -10,15 +9,19 @@ pub struct CliArgs {
     /// Maximum subfolder depth to recurse into.
     ///
     /// `0` = current directory only, `255` = unlimited (default: `0`).
-    #[arg(short = 'd', long = "depth", default_value_t = 0)]
+    #[arg(short = 'd',long, visible_aliases = ["depth"], default_value_t = 0)]
     pub max_depth: u8,
 
     /// Explicit port to listen on. If not provided, defaults to 8081 and scans upward.
-    #[arg(short = 'p', long = "port")]
+    #[arg(short = 'p', long)]
     pub port: Option<u16>,
 
+    /// Open the interactive terminal interface while the server runs.
+    #[arg(long, visible_aliases = ["use-tui"])]
+    pub open_tui: bool,
+
     /// Generate missing thumbnails with FFmpeg. Will fail at startup if FFmpeg is unavailable.
-    #[arg(long = "use-thumbnails")]
+    #[arg(long,visible_aliases = ["use-thumbnails","generate-thumbnails"])]
     pub thumbnails: bool,
 
     /// FFmpeg executable to use (otherwise resolved from PATH). Requires --thumbnails.
@@ -26,7 +29,7 @@ pub struct CliArgs {
     pub ffmpeg_path: Option<PathBuf>,
 
     /// Root path for files (default: current directory).
-    #[arg(default_value = "./", value_parser = CliArgs::validate_dir)]
+    #[arg(long,default_value = "./", value_parser = CliArgs::validate_dir)]
     pub path: PathBuf,
 }
 
@@ -41,11 +44,11 @@ impl CliArgs {
         }
 
         if !path.is_dir() {
-            return Err(format!("The path '{path_str}' exists, but it is not a directory."));
+            return Err(format!(
+                "The path '{path_str}' exists, but it is not a directory."
+            ));
         }
-
         Ok(path)
-    
     }
 }
 
@@ -71,7 +74,7 @@ mod tests {
 
     #[test]
     fn parses_defaults() {
-        let args_result = CliArgs::try_parse_from([EXECUTABLE, "./test"]);
+        let args_result = CliArgs::try_parse_from([EXECUTABLE, "."]);
         assert!(
             args_result.is_ok(),
             "expected Ok but got: {:?}",
@@ -80,10 +83,26 @@ mod tests {
         let args = args_result.expect("checked above");
 
         assert_eq!(args.port, None);
-        assert_eq!(args.path, PathBuf::from("./test"));
+        assert_eq!(args.path, PathBuf::from("."));
         assert_eq!(args.max_depth, 0);
+        assert!(!args.open_tui);
         assert!(!args.thumbnails);
         assert!(args.ffmpeg_path.is_none());
+    }
+
+    #[test]
+    fn tui_is_only_enabled_by_its_flag() {
+        let args_result = CliArgs::try_parse_from([EXECUTABLE, "--open-tui"]);
+        assert!(args_result.is_ok());
+        if let Ok(args) = args_result {
+            assert!(args.open_tui);
+        }
+
+        let default_result = CliArgs::try_parse_from([EXECUTABLE]);
+        assert!(default_result.is_ok());
+        if let Ok(args) = default_result {
+            assert!(!args.open_tui);
+        }
     }
 
     #[test]
@@ -109,9 +128,13 @@ mod tests {
 
     #[test]
     fn thumbnail_generation_is_explicitly_enabled() {
-        let args =
-            CliArgs::try_parse_from([EXECUTABLE, "--thumbnails", "--ffmpeg-path", "tools/ffmpeg"])
-                .expect("valid thumbnail options");
+        let args = CliArgs::try_parse_from([
+            EXECUTABLE,
+            "--use-thumbnails",
+            "--ffmpeg-path",
+            "tools/ffmpeg",
+        ])
+        .expect("valid thumbnail options");
         assert!(args.thumbnails);
         assert_eq!(args.ffmpeg_path, Some(PathBuf::from("tools/ffmpeg")));
         assert!(CliArgs::try_parse_from([EXECUTABLE, "--ffmpeg-path", "ffmpeg"]).is_err());
