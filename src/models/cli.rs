@@ -9,7 +9,7 @@ pub struct CliArgs {
     /// Maximum subfolder depth to recurse into.
     ///
     /// `0` = current directory only, `255` = unlimited (default: `0`).
-    #[arg(short = 'd',long, visible_aliases = ["depth"], default_value_t = 0)]
+    #[arg(short = 'r',long, visible_aliases = ["depth","recurse","recursive"], default_value_t = 0)]
     pub max_depth: u8,
 
     /// Explicit port to listen on. If not provided, defaults to 8081 and scans upward.
@@ -25,11 +25,11 @@ pub struct CliArgs {
     pub thumbnails: bool,
 
     /// FFmpeg executable to use (otherwise resolved from PATH). Requires --thumbnails.
-    #[arg(long, requires = "thumbnails")]
+    #[arg(long, requires = "thumbnails",value_parser=CliArgs::validate_path)]
     pub ffmpeg_path: Option<PathBuf>,
 
     /// Root path for files (default: current directory).
-    #[arg(long,default_value = "./", value_parser = CliArgs::validate_dir)]
+    #[arg(default_value = "./", value_parser = CliArgs::validate_dir)]
     pub path: PathBuf,
 }
 
