@@ -1,8 +1,5 @@
 use crate::droptube_dir;
 
-/// Default Port for server
-pub const DEFAULT_PORT: u16 = 8081;
-
 /// Number of video cards displayed per page on the home feed.
 pub const PAGE_SIZE: usize = 24;
 

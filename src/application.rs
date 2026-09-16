@@ -1,7 +1,6 @@
 //! Application startup, background work, and server lifecycle orchestration.
 
 use axum::Router;
-use droptube::config::constants::DEFAULT_PORT;
 use droptube::config::logger::{TuiLogControl, create_log, create_tui_log};
 use droptube::models::cli::{self, CliArgs};
 use droptube::models::state::AppState;
@@ -21,6 +20,8 @@ use tokio::sync::{Mutex, RwLock, oneshot};
 
 const BACKGROUND_SCAN_INTERVAL: Duration = Duration::from_mins(5);
 
+/// Default starting Port for server
+const DEFAULT_PORT: u16 = 8081;
 struct Application {
     router: Router,
     listener: TcpListener,
