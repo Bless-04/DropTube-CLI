@@ -54,10 +54,10 @@ impl Drop for ServerRunningGuard {
 
 impl Application {
     async fn initialize() -> Self {
-        let tui_log_control = initialize_logging();
+        let args = cli::get();
+        let tui_log_control = initialize_logging(args.open_tui);
         install_panic_hook();
 
-        let args = cli::get();
         let directory = canonicalize_directory(&args.path);
         let thumbnails = initialize_thumbnails(args).await;
         let mut state = initialize_state(&directory, args.max_depth, thumbnails).await;
@@ -107,8 +107,8 @@ pub(crate) async fn run() {
     Application::initialize().await.serve().await;
 }
 
-fn initialize_logging() -> Option<TuiLogControl> {
-    if cli::open_tui() {
+fn initialize_logging(open_tui: bool) -> Option<TuiLogControl> {
+    if open_tui {
         match create_tui_log(Level::Info) {
             Ok(control) => Some(control),
             Err(error) => {
@@ -168,10 +168,13 @@ async fn initialize_thumbnails(args: &CliArgs) -> Option<ThumbnailGenerator> {
         .unwrap_or_else(|| PathBuf::from("ffmpeg"));
     match ThumbnailGenerator::new(executable.clone()).await {
         Ok(generator) => Some(generator),
-        Err(error) => panic!(
-            "creating or using thumbnails requires FFmpeg; could not use '{}': {error}. Install FFmpeg on PATH or pass --ffmpeg-path.",
-            executable.display()
-        ),
+        Err(error) => {
+            error!(
+                "creating or using thumbnails requires FFmpeg; could not use '{}': {error}. Install FFmpeg on PATH or pass --ffmpeg-path.",
+                executable.display()
+            );
+            std::process::exit(1);
+        }
     }
 }
 
@@ -391,6 +394,7 @@ mod tests {
         let args = CliArgs {
             max_depth: 0,
             port: None,
+            open_tui: false,
             thumbnails: false,
             ffmpeg_path: Some(PathBuf::from("missing-ffmpeg")),
             path: PathBuf::from("."),
