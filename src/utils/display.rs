@@ -20,8 +20,11 @@ pub fn scanning_mode(depth: u8) {
     println!("⚙️  Scanning Mode     : \x1b[1;33m{mode}\x1b[0m");
 }
 
+
+#[must_use]
 /// Prints the local and LAN access URLs.
-pub fn local_urls(local_ip_addr: String, port: u16) {
+/// returns the network_url
+pub fn local_urls(local_ip_addr: String, port: u16) -> String {
     println!(
         "🚀 Local Access      : \x1b[1;35mhttp://localhost:{}\x1b[0m",
         port
@@ -34,6 +37,7 @@ pub fn local_urls(local_ip_addr: String, port: u16) {
     if let Err(e) = qr2term::print_qr(&network_url) {
         error!("Failed to generate QR code: {}", e);
     }
+    network_url
 }
 
 /// title for cli
