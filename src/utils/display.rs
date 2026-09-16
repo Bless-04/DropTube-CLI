@@ -20,10 +20,9 @@ pub fn scanning_mode(depth: u8) {
     println!("⚙️  Scanning Mode     : \x1b[1;33m{mode}\x1b[0m");
 }
 
-
 #[must_use]
 /// Prints the local and LAN access URLs.
-/// returns the network_url
+/// returns the public network url
 pub fn local_urls(local_ip_addr: String, port: u16) -> String {
     println!(
         "🚀 Local Access      : \x1b[1;35mhttp://localhost:{}\x1b[0m",
