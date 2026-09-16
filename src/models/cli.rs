@@ -35,14 +35,16 @@ pub struct CliArgs {
 
 /// Startup Validation
 impl CliArgs {
+    fn validate_path(path_str: &str) -> Result<PathBuf, String> {
+        let path = PathBuf::from(path_str);
+        match path.exists() {
+            true => Ok(path),
+            false => Err(format!("Path {} does not exist", path_str)),
+        }
+    }
     /// Validates the directory passed by args
     fn validate_dir(path_str: &str) -> Result<PathBuf, String> {
-        let path = PathBuf::from(path_str);
-
-        if !path.exists() {
-            return Err(format!("The directory path '{path_str}' does not exist."));
-        }
-
+        let path = Self::validate_path(path_str)?;
         if !path.is_dir() {
             return Err(format!(
                 "The path '{path_str}' exists, but it is not a directory."
