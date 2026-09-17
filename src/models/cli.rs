@@ -1,4 +1,5 @@
 use clap::Parser;
+use log::error;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
@@ -16,9 +17,35 @@ pub struct CliArgs {
     #[arg(short = 'p', long = "port")]
     pub port: Option<u16>,
 
+    /// Generate missing thumbnails with FFmpeg. Will fail at startup if FFmpeg is unavailable.
+    #[arg(long = "use-thumbnails")]
+    pub thumbnails: bool,
+
+    /// FFmpeg executable to use (otherwise resolved from PATH). Requires --thumbnails.
+    #[arg(long, requires = "thumbnails")]
+    pub ffmpeg_path: Option<PathBuf>,
+
     /// Root path for files (default: current directory).
-    #[arg(default_value = "./")]
+    #[arg(default_value = "./", value_parser = CliArgs::validate_dir)]
     pub path: PathBuf,
+}
+
+/// Startup Validation
+impl CliArgs {
+    fn validate_dir(path_str: &str) -> Result<PathBuf, String> {
+        let path = PathBuf::from(path_str);
+
+        if !path.exists() {
+            return Err(format!("The directory path '{path_str}' does not exist."));
+        }
+
+        if !path.is_dir() {
+            return Err(format!("The path '{path_str}' exists, but it is not a directory."));
+        }
+
+        Ok(path)
+    
+    }
 }
 
 /// Global singleton for the parsed CLI args, initialised lazily from `std::env::args`.
@@ -54,6 +81,8 @@ mod tests {
         assert_eq!(args.port, None);
         assert_eq!(args.path, PathBuf::from("./test"));
         assert_eq!(args.max_depth, 0);
+        assert!(!args.thumbnails);
+        assert!(args.ffmpeg_path.is_none());
     }
 
     #[test]
@@ -75,5 +104,15 @@ mod tests {
         let args_result = CliArgs::try_parse_from([EXECUTABLE, "-d", "5", "."]);
         let args = args_result.expect("valid args");
         assert_eq!(args.max_depth, 5);
+    }
+
+    #[test]
+    fn thumbnail_generation_is_explicitly_enabled() {
+        let args =
+            CliArgs::try_parse_from([EXECUTABLE, "--thumbnails", "--ffmpeg-path", "tools/ffmpeg"])
+                .expect("valid thumbnail options");
+        assert!(args.thumbnails);
+        assert_eq!(args.ffmpeg_path, Some(PathBuf::from("tools/ffmpeg")));
+        assert!(CliArgs::try_parse_from([EXECUTABLE, "--ffmpeg-path", "ffmpeg"]).is_err());
     }
 }

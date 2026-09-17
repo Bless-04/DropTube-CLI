@@ -1,38 +1,32 @@
 {% extends "base.html" %}
-
 {% block search_value %}{{ search_query }}{% endblock %}
-
+{% block search_filters %}{% if !tag_filter.is_empty() %}<input type="hidden" name="tag" value="{{ tag_filter }}">{% endif %}{% endblock %}
+{% block home_active %}selected{% endblock %}
 {% block category_filters %}
-<div class="bg-[#0f0f0f] border-b border-zinc-900 py-3 px-4 flex gap-2 overflow-x-auto scrollbar-thin max-w-7xl mx-auto w-full select-none">
-    <button onclick="filterByTag('all')"
-        class="tag-btn {{ all_btn_class }} text-xs px-4 py-1.5 rounded-full active:scale-95 transition-all flex-shrink-0">
-        All
-    </button>
-    {{ tag_filters_html|safe }}
-</div>
+<nav class="category-bar" aria-label="Filter by tag">
+    <a href="{{ all_url }}" class="chip {% if tag_filter.is_empty() %}selected{% endif %}" {% if tag_filter.is_empty() %}aria-current="true"{% endif %}>All</a>
+    {% for tag in tags %}<a href="{{ tag.url }}" class="chip {% if tag.selected %}selected{% endif %}" {% if tag.selected %}aria-current="true"{% endif %}>{{ tag.label }}</a>{% endfor %}
+</nav>
 {% endblock %}
-
 {% block content %}
-    {% if has_active %}
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-7xl mx-auto py-0 md:py-6">
-        {{ player_html|safe }}
-        <div class="lg:col-span-1 p-4 md:p-0 flex flex-col gap-4">
-            <h3 class="text-white text-base font-bold tracking-tight border-b border-zinc-800 pb-2">Up Next</h3>
-            <div class="flex flex-col gap-2 overflow-y-auto max-h-[600px] pr-1 scrollbar-thin">
-                {{ video_cards_html|safe }}
-            </div>
-        </div>
+<div class="feed-content">
+    {% match active %}
+    {% when Some with (video) %}
+    <div class="watch-layout">
+        <section class="watch-main" aria-label="Video player">
+            <div class="player-container"><video id="video-player" src="{{ video.media_url }}" {% if let Some(poster) = video.thumbnail_url %}poster="{{ poster }}"{% endif %} controls autoplay playsinline preload="metadata"></video></div>
+            <h1 class="watch-title">{{ video.title }}</h1>
+            <div class="watch-actions"><div class="library-identity"><span class="local-avatar">L</span><div><strong>Local library</strong><span>{{ video.format }} · {{ video.size }}</span></div></div><a href="{{ video.media_url }}" download class="button"><svg class="icon"><use href="#icon-download"/></svg>Download</a></div>
+            <div class="video-description"><span>Added <span class="time-elapsed" data-timestamp="{{ video.timestamp }}">to your library</span></span>{% if video.is_rated %}<span class="rating">{{ video.rating }}</span>{% endif %}<div class="video-tags">{% for tag in video.tags %}<span>#{{ tag }}</span>{% endfor %}</div></div>
+            {% if video.is_mkv %}<p class="playback-note">If your browser cannot play this MKV, download it to watch with a compatible video player.</p>{% endif %}
+        </section>
+        <section class="up-next" aria-label="More videos"><h2>More from your library</h2><div class="video-grid compact">{% for card in cards %}{% include "video_card.html" %}{% endfor %}</div>{% if cards.is_empty() %}<p class="muted">No videos match these filters.</p>{% endif %}</section>
     </div>
-    {% else %}
-    <div class="max-w-7xl mx-auto px-4 py-8">
-        <h2 class="text-white text-lg md:text-xl font-bold tracking-tight mb-6 flex items-center gap-2">
-            <span class="w-1.5 h-6 bg-red-600 rounded-full"></span>
-            Local Video Feed
-        </h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {{ video_cards_html|safe }}
-        </div>
-        {{ pagination_html|safe }}
-    </div>
-    {% endif %}
+    {% when None %}
+    <div class="feed-heading"><div><p class="eyebrow">YOUR LOCAL LIBRARY</p><h1>{% if !search_query.is_empty() %}Results for “{{ search_query }}”{% else if !tag_filter.is_empty() %}{{ tag_filter }}{% else %}Your videos{% endif %}</h1></div><span class="result-count">{{ total_count }} {% if total_count == 1 %}video{% else %}videos{% endif %}</span></div>
+    <div class="video-grid">{% for card in cards %}{% include "video_card.html" %}{% endfor %}</div>
+    {% if cards.is_empty() %}<section class="empty-state"><div class="empty-icon"><svg class="icon"><use href="#icon-search"/></svg></div>{% if has_filters %}<h2>No videos found</h2><p>Try different words or clear your filters to see your library.</p><a class="button" href="/">Clear filters</a>{% else %}<h2>Your library is ready for videos</h2><p>Add videos to the folder you’re sharing, then refresh your library.</p><a class="button" href="/explorer">Browse folders</a>{% endif %}</section>{% endif %}
+    {% endmatch %}
+    {% if total_pages > 1 %}<nav class="pagination" aria-label="Video pages">{% if current_page > 1 %}<a class="button" href="{{ previous_url }}" rel="prev">Previous</a>{% endif %}<span>Page {{ current_page }} of {{ total_pages }}</span>{% if current_page < total_pages %}<a class="button" href="{{ next_url }}" rel="next">Next<svg class="icon"><use href="#icon-chevron"/></svg></a>{% endif %}</nav>{% endif %}
+</div>
 {% endblock %}

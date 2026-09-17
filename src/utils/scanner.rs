@@ -1,3 +1,4 @@
+use crate::config::constants::DROPTUBE_DIRECTORY;
 use crate::models::video::{Rating, Tag, VideoFile, VideoFormat};
 use log::warn;
 use std::fs;
@@ -77,7 +78,7 @@ pub struct ScanDirectoryParams {
 
 impl ScanDirectoryParams {
     /// Image extensions checked when looking for sidecar thumbnails.
-    const THUMBNAIL_EXT: [&'static str; 4] = ["jpg", "jpeg", "png", "webp"];
+    pub const THUMBNAIL_EXT: [&'static str; 4] = ["jpg", "jpeg", "png", "webp"];
 
     /// Creates a root-level scan starting at `root_dir` with the given `max_depth`.
     pub fn new(root_dir: PathBuf, max_depth: u8) -> Self {
@@ -105,7 +106,7 @@ pub fn scan_directory(params: &mut ScanDirectoryParams) {
     let current_dir = &params.current_dir;
     let base_dir = &params.base_dir;
 
-    let entries = match fs::read_dir(&current_dir) {
+    let entries = match fs::read_dir(current_dir) {
         Ok(e) => e,
         Err(err) => {
             warn!(
@@ -119,6 +120,13 @@ pub fn scan_directory(params: &mut ScanDirectoryParams) {
 
     for entry in entries.flatten() {
         let e_path = entry.path();
+
+        // Skip cache and links: linked directories can loop or leave the library.
+        if entry.file_name().eq(DROPTUBE_DIRECTORY)
+            || entry.file_type().is_ok_and(|kind| kind.is_symlink())
+        {
+            continue;
+        }
 
         if e_path.is_dir() {
             if params.should_recurse() {
@@ -146,7 +154,7 @@ pub fn scan_directory(params: &mut ScanDirectoryParams) {
 
             // Compute web-friendly relative path from base_dir for the streaming URL
             let file_name = e_path
-                .strip_prefix(&base_dir)
+                .strip_prefix(base_dir)
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|_| e_path.to_string_lossy().to_string())
                 .replace('\\', "/");
@@ -160,7 +168,7 @@ pub fn scan_directory(params: &mut ScanDirectoryParams) {
                 test_thumb.set_extension(img_ext);
                 if test_thumb.exists() && test_thumb.is_file() {
                     let rel_thumb = test_thumb
-                        .strip_prefix(&base_dir)
+                        .strip_prefix(base_dir)
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_else(|_| test_thumb.to_string_lossy().to_string())
                         .replace('\\', "/");
