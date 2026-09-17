@@ -17,11 +17,11 @@ pub struct CliArgs {
     pub port: Option<u16>,
 
     /// Open the interactive terminal interface while the server runs.
-    #[arg(long, visible_aliases = ["use-tui"])]
+    #[arg(long, visible_aliases = ["tui","use-tui"])]
     pub open_tui: bool,
 
     /// Generate missing thumbnails with FFmpeg. Will fail at startup if FFmpeg is unavailable.
-    #[arg(long,visible_aliases = ["use-thumbnails","generate-thumbnails"])]
+    #[arg(long,visible_aliases = ["show-thumbnails","use-thumbnails","generate-thumbnails"])]
     pub thumbnails: bool,
 
     /// FFmpeg executable to use (otherwise resolved from PATH). Requires --thumbnails.
@@ -165,13 +165,9 @@ mod tests {
         let fake_ffmpeg = fixture.create_file("fake_ffmpeg.exe");
         let ffmpeg_str = fake_ffmpeg.to_str().expect("valid utf-8 path");
 
-        let args = CliArgs::try_parse_from([
-            EXECUTABLE,
-            "--use-thumbnails",
-            "--ffmpeg-path",
-            ffmpeg_str,
-        ])
-        .expect("valid thumbnail options");
+        let args =
+            CliArgs::try_parse_from([EXECUTABLE, "--use-thumbnails", "--ffmpeg-path", ffmpeg_str])
+                .expect("valid thumbnail options");
         assert!(args.thumbnails);
         assert_eq!(args.ffmpeg_path, Some(fake_ffmpeg.clone()));
 
