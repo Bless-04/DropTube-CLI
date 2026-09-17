@@ -1,4 +1,7 @@
 mod handlers;
+mod tracking;
+
+pub use tracking::{ClientSnapshot, ServerState, TrackingListener};
 
 use axum::Router;
 use axum::routing::{get, post};
