@@ -36,28 +36,38 @@ If no directory argument is passed, DropTube safely defaults to serving your cur
 DropTube comes with configuration flags to customize its behavior:
 
 ```bash
-Usage: droptube [OPTIONS] [PATH]
+Usage: droptube.exe [OPTIONS] [PATH]
 
 Arguments:
   [PATH]
-          Root path for files (default: current directory) [default: ./]
+          Root path for files (default: current directory)
+
+          [default: ./]
 
 Options:
-  -d, --depth <MAX_DEPTH>
+  -r, --max-depth <MAX_DEPTH>
           Maximum subfolder depth to recurse into.
-          `0` = current directory only, `255` = unlimited (default: `0`). [default: 0]
+
+          `0` = current directory only, `255` = unlimited (default: `0`).
+
+          [default: 0]
+          [aliases: --depth, --recurse, --recursive]
 
   -p, --port <PORT>
-          Explicit port to listen on. If not provided, defaults to 8081 and scans upward automatically if the port is in use.
-
-      --thumbnails
-          Generate missing thumbnails with FFmpeg. Panics at startup if FFmpeg is unavailable.
-
-      --ffmpeg-path <FFMPEG_PATH>
-          FFmpeg executable to use instead of PATH. Requires --thumbnails.
+          Explicit port to listen on. If not provided, defaults to 8081 and scans upward
 
       --open-tui
-          Open the interactive terminal interface while the server runs.
+          Open the interactive terminal interface while the server runs
+
+          [alias: --tui, --use-tui]
+
+      --thumbnails
+          Generate missing thumbnails with FFmpeg. Will fail at startup if FFmpeg is unavailable
+
+          [aliases: --use-thumbnails, --generate-thumbnails, --show-thumbnails]
+
+      --ffmpeg-path <FFMPEG_PATH>
+          FFmpeg executable to use (otherwise resolved from PATH). Requires --thumbnails
 
   -h, --help
           Print help (see a summary with '-h')
