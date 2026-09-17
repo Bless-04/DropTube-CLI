@@ -1,5 +1,22 @@
 use crate::droptube_dir;
 
+/// exit codes
+#[repr(i32)]
+pub enum AppExitCode {
+    ///No Problems.
+    Success = 0,
+
+    /// A catch-all code for general, unclassified runtime errors.
+    Error = 1,
+
+    /// Incorrect command line argument usage, invalid flags, or syntax errors.
+    UsageError = 2,
+}
+impl From<AppExitCode> for i32 {
+    fn from(code: AppExitCode) -> Self {
+        code as i32
+    }
+}
 /// Number of video cards displayed per page on the home feed.
 pub const PAGE_SIZE: usize = 24;
 

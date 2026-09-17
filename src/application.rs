@@ -12,11 +12,13 @@ use local_ip_address::local_ip;
 use log::{Level, error, info, warn};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, RwLock, oneshot};
+use droptube::config::constants::AppExitCode;
 
 const BACKGROUND_SCAN_INTERVAL: Duration = Duration::from_mins(5);
 
@@ -114,13 +116,13 @@ fn initialize_logging(open_tui: bool) -> Option<TuiLogControl> {
             Ok(control) => Some(control),
             Err(error) => {
                 eprintln!("Failed to attach terminal interface logger: {error}");
-                std::process::exit(1);
+                std::process::exit(AppExitCode::Error.into());
             }
         }
     } else {
         if let Err(error) = create_log(Level::Info) {
             eprintln!("Failed to attach logger: {error}");
-            std::process::exit(1);
+            std::process::exit(AppExitCode::Error.into());
         }
         None
     }
@@ -174,7 +176,7 @@ async fn initialize_thumbnails(args: &CliArgs) -> Option<ThumbnailGenerator> {
                 "creating or using thumbnails requires FFmpeg; could not use '{}': {error}. Install FFmpeg on PATH or pass --ffmpeg-path.",
                 executable.display()
             );
-            std::process::exit(1);
+            std::process::exit(AppExitCode::UsageError.into());
         }
     }
 }
@@ -196,7 +198,7 @@ async fn initialize_state(
     info!("Performing initial filesystem index scan...");
     if let Err(error) = state.refresh_index().await {
         error!("Initial scan failed: {error}");
-        std::process::exit(1);
+        std::process::exit(AppExitCode::Error.into());
     }
     state
 }
@@ -214,7 +216,7 @@ async fn bind_listener(explicit_port: Option<u16>) -> BoundListener {
             Ok(listener) => BoundListener { listener, port },
             Err(error) => {
                 error!("Failed to bind to port {port}: {error}");
-                std::process::exit(1);
+                std::process::exit(AppExitCode::Error.into());
             }
         };
     }
@@ -229,7 +231,7 @@ async fn bind_listener(explicit_port: Option<u16>) -> BoundListener {
             }
             Err(error) => {
                 error!("Failed to bind to port {port}: {error}");
-                std::process::exit(1);
+                std::process::exit(AppExitCode::Error.into());
             }
         }
     }
