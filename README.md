@@ -59,12 +59,12 @@ Options:
       --open-tui
           Open the interactive terminal interface while the server runs
 
-          [alias: --tui, --use-tui]
+          [aliases: --tui, --use-tui]
 
       --thumbnails
           Generate missing thumbnails with FFmpeg. Will fail at startup if FFmpeg is unavailable
 
-          [aliases: --use-thumbnails, --generate-thumbnails, --show-thumbnails]
+          [aliases: --show-thumbnails, --use-thumbnails, --generate-thumbnails]
 
       --ffmpeg-path <FFMPEG_PATH>
           FFmpeg executable to use (otherwise resolved from PATH). Requires --thumbnails
