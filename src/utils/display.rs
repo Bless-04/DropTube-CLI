@@ -1,3 +1,4 @@
+use crate::utils;
 use log::error;
 use std::path::Display;
 
@@ -20,16 +21,15 @@ pub fn scanning_mode(depth: u8) {
     println!("⚙️  Scanning Mode     : \x1b[1;33m{mode}\x1b[0m");
 }
 
+/// Prints the local and LAN access URLs and returns the LAN URL.
 #[must_use]
-/// Prints the local and LAN access URLs.
-/// returns the public network url
-pub fn local_urls(local_ip_addr: String, port: u16) -> String {
+pub fn local_urls(local_ip_addr: &str, port: u16) -> String {
     println!(
         "🚀 Local Access      : \x1b[1;35mhttp://localhost:{}\x1b[0m",
         port
     );
 
-    let network_url = format!("http://{}:{}", local_ip_addr, port);
+    let network_url = utils::local_url_of(local_ip_addr, port);
     println!("📱 Mobile Stream LAN : \x1b[1;35m{}\x1b[0m\n", network_url);
 
     // Print QR code for the network URL
