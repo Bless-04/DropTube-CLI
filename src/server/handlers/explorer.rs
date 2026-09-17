@@ -252,11 +252,118 @@ fn escape_html(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use axum::body::to_bytes;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use tokio::sync::{Mutex, RwLock};
+
+    struct TestDir(PathBuf);
+
+    impl TestDir {
+        fn new(prefix: &str) -> Self {
+            static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "droptube-{prefix}-{}-{}",
+                std::process::id(),
+                NEXT_ID.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir_all(&path).expect("create test dir");
+            Self(path.canonicalize().expect("canonicalize test dir"))
+        }
+
+        fn create_file(&self, relative: &str, content: &[u8]) -> PathBuf {
+            let path = self.0.join(relative);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).expect("create parent dirs");
+            }
+            fs::write(&path, content).expect("write mock file");
+            path
+        }
+
+        fn state(&self) -> AppState {
+            AppState {
+                movie_directory: self.0.clone(),
+                port: 8081,
+                depth: 255,
+                index_cache: Arc::new(RwLock::new(Vec::new())),
+                thumbnails: None,
+                scan_lock: Arc::new(Mutex::new(())),
+            }
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
     #[test]
     fn filesystem_labels_are_escaped_before_inserting_html() {
         assert_eq!(
             super::escape_html("<b>O'Brien & \"friends\"</b>"),
             "&lt;b&gt;O&#39;Brien &amp; &quot;friends&quot;&lt;/b&gt;"
         );
+    }
+
+    #[tokio::test]
+    async fn explorer_root_handler_renders_directory_contents() {
+        let fixture = TestDir::new("exp-root");
+        fixture.create_file("subfolder/video.mp4", b"video");
+        fixture.create_file("top_level.mp4", b"video");
+
+        let response = explorer_root_handler(State(fixture.state()))
+            .await
+            .expect("render explorer root")
+            .into_response();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("read body");
+        let html = String::from_utf8_lossy(&body);
+
+        assert!(html.contains("subfolder"));
+        assert!(html.contains("top_level.mp4"));
+    }
+
+    #[tokio::test]
+    async fn explorer_path_handler_renders_subfolder_with_back_button() {
+        let fixture = TestDir::new("exp-sub");
+        fixture.create_file("my_folder/inner.mp4", b"video");
+
+        let response = explorer_path_handler(
+            State(fixture.state()),
+            axum::extract::Path("my_folder".to_string()),
+        )
+        .await
+        .expect("render subfolder")
+        .into_response();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("read body");
+        let html = String::from_utf8_lossy(&body);
+
+        assert!(html.contains("inner.mp4"));
+        assert!(html.contains("Go Back"));
+    }
+
+    #[tokio::test]
+    async fn explorer_path_handler_returns_not_found_for_missing_path() {
+        let fixture = TestDir::new("exp-missing");
+
+        let response = explorer_path_handler(
+            State(fixture.state()),
+            axum::extract::Path("non_existent_folder".to_string()),
+        )
+        .await
+        .expect("handler returns response")
+        .into_response();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 }

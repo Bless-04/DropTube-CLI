@@ -9,6 +9,7 @@ use axum::{
 };
 use log::error;
 
+#[derive(Debug)]
 pub struct TemplateError(pub askama::Error);
 
 impl IntoResponse for TemplateError {

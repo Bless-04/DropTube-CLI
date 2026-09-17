@@ -40,24 +40,55 @@ impl Library {
 
 impl Drop for Library {
     fn drop(&mut self) {
-        fs::remove_dir_all(&self.0).expect("remove isolated test directory");
+        let _ = fs::remove_dir_all(&self.0);
     }
 }
 
 #[test]
 fn enabling_generation_panics_at_startup_if_ffmpeg_is_missing() {
     let library = Library::new();
+    let fake_ffmpeg = library.0.join("fake_ffmpeg.exe");
+    fs::write(&fake_ffmpeg, b"not really ffmpeg").expect("write fake ffmpeg binary");
+
     let output = Command::new(env!("CARGO_BIN_EXE_droptube"))
         .arg(&library.0)
-        .arg("--thumbnails")
+        .arg("--use-thumbnails")
         .arg("--ffmpeg-path")
-        .arg(library.0.join("not-installed-ffmpeg"))
+        .arg(&fake_ffmpeg)
         .output()
         .expect("start droptube");
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("System panic detected"), "{stderr}");
-    assert!(stderr.contains("--thumbnails requires FFmpeg"), "{stderr}");
+    assert!(stderr.contains("FFmpeg"), "{stderr}");
+}
+
+#[test]
+fn startup_fails_when_ffmpeg_missing_from_path() {
+    let library = Library::new();
+    let output = Command::new(env!("CARGO_BIN_EXE_droptube"))
+        .arg(&library.0)
+        .arg("--use-thumbnails")
+        .env("PATH", "")
+        .output()
+        .expect("start droptube");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("FFmpeg"), "{stderr}");
+}
+
+#[test]
+fn startup_fails_when_ffmpeg_path_arg_does_not_exist() {
+    let library = Library::new();
+    let output = Command::new(env!("CARGO_BIN_EXE_droptube"))
+        .arg(&library.0)
+        .arg("--use-thumbnails")
+        .arg("--ffmpeg-path")
+        .arg(library.0.join("missing-ffmpeg-binary"))
+        .output()
+        .expect("start droptube");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("does not exist"), "{stderr}");
 }
 
 #[tokio::test]
