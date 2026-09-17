@@ -123,7 +123,7 @@ mod tests {
 
     #[test]
     fn parse_args_depth_short_flag() {
-        let args_result = CliArgs::try_parse_from([EXECUTABLE, "-d", "5", "."]);
+        let args_result = CliArgs::try_parse_from([EXECUTABLE, ".", "-r", "5"]);
         let args = args_result.expect("valid args");
         assert_eq!(args.max_depth, 5);
     }
