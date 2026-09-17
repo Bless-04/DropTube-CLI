@@ -15,27 +15,18 @@ Ensure you have the Rust toolchain installed, clone the repository, and build th
 cargo build --release
 ```
 
-The executable is created at `target/release/droptube` on macOS/Linux and
-`target\release\droptube.exe` on Windows. To make the `droptube` command available on your `PATH`,
-install it from the repository root:
-
-```bash
-cargo install --path .
-```
+Your optimized standalone executable will be located in `target/release/droptube`.
 
 ### Usage
 
-Pass the directory to serve as the optional final `PATH` argument:
+Drop a directory path directly into the command-line argument when executing the program:
 
 ```bash
-# Windows PowerShell, running the release build from the repository
-.\target\release\droptube.exe "C:\Users\YourName\Movies"
+# Windows
+droptube.exe C:\Users\YourName\Movies
 
-# macOS/Linux, running the release build from the repository
-./target/release/droptube "/path/to/your/movies"
-
-# Run through Cargo without installing the binary
-cargo run --release -- "/path/to/your/movies"
+# macOS / Linux
+./droptube /path/to/your/movies
 ```
 
 If no directory argument is passed, DropTube safely defaults to serving your current active terminal directory (`.`).
@@ -45,31 +36,38 @@ If no directory argument is passed, DropTube safely defaults to serving your cur
 DropTube comes with configuration flags to customize its behavior:
 
 ```bash
-Usage: droptube [OPTIONS] [PATH]
+Usage: droptube.exe [OPTIONS] [PATH]
 
 Arguments:
   [PATH]
-          Root path for files (default: current directory) [default: ./]
+          Root path for files (default: current directory)
+
+          [default: ./]
 
 Options:
   -r, --max-depth <MAX_DEPTH>
           Maximum subfolder depth to recurse into.
-          `0` = current directory only, `255` = unlimited (default: `0`). [default: 0]
+
+          `0` = current directory only, `255` = unlimited (default: `0`).
+
+          [default: 0]
           [aliases: --depth, --recurse, --recursive]
 
   -p, --port <PORT>
-          Explicit port to listen on. If not provided, defaults to 8081 and scans upward automatically if the port is in use.
+          Explicit port to listen on. If not provided, defaults to 8081 and scans upward
 
       --open-tui
-          Open the interactive terminal interface while the server runs.
-          [alias: --use-tui]
+          Open the interactive terminal interface while the server runs
+
+          [alias: --tui, --use-tui]
 
       --thumbnails
-          Generate missing thumbnails with FFmpeg. Will fail at startup if FFmpeg is unavailable.
-          [aliases: --use-thumbnails, --generate-thumbnails]
+          Generate missing thumbnails with FFmpeg. Will fail at startup if FFmpeg is unavailable
+
+          [aliases: --use-thumbnails, --generate-thumbnails, --show-thumbnails]
 
       --ffmpeg-path <FFMPEG_PATH>
-          FFmpeg executable to use instead of PATH. Requires --thumbnails.
+          FFmpeg executable to use (otherwise resolved from PATH). Requires --thumbnails
 
   -h, --help
           Print help (see a summary with '-h')
@@ -81,16 +79,11 @@ Options:
 #### Example Usage
 
 ```bash
-# The examples below assume `cargo install --path .` was run first.
-
 # Serve movies recursively from subfolders on port 9000
-droptube --max-depth 255 --port 9000 "/path/to/movies"
+droptube --depth 255 --port 9000 /path/to/movies
 
 # Opt into the terminal dashboard
-droptube --open-tui "/path/to/movies"
-
-# Use the short recursive-depth and port flags on Windows
-droptube -r 255 -p 9000 "D:\Movies"
+droptube --open-tui /path/to/movies
 ```
 
 The terminal dashboard is strictly opt-in. Without `--open-tui`, DropTube keeps its existing
@@ -107,10 +100,10 @@ or Ctrl+C to stop the dashboard and server gracefully.
 Thumbnail generation is **off by default**. To enable it, install [FFmpeg](https://ffmpeg.org/download.html) and run:
 
 ```bash
-droptube --thumbnails --max-depth 255 "/path/to/movies"
+droptube --thumbnails --depth 255 /path/to/movies
 
 # Windows: use an explicit executable if FFmpeg is not on PATH
-droptube --thumbnails --ffmpeg-path "C:\Tools\ffmpeg\bin\ffmpeg.exe" "D:\Movies"
+droptube.exe --thumbnails --ffmpeg-path "C:\Tools\ffmpeg\bin\ffmpeg.exe" "D:\Movies"
 ```
 
 With generation enabled, DropTube checks FFmpeg before scanning and fails at startup if the executable is missing,
