@@ -18,7 +18,7 @@ pub struct CliArgs {
     pub port: Option<u16>,
 
     /// Generate missing thumbnails with FFmpeg. Will fail at startup if FFmpeg is unavailable.
-    #[arg(long = "use-thumbnails")]
+    #[arg(long = "thumbnails", alias = "use-thumbnails")]
     pub thumbnails: bool,
 
     /// FFmpeg executable to use (otherwise resolved from PATH). Requires --thumbnails.
@@ -114,5 +114,12 @@ mod tests {
         assert!(args.thumbnails);
         assert_eq!(args.ffmpeg_path, Some(PathBuf::from("tools/ffmpeg")));
         assert!(CliArgs::try_parse_from([EXECUTABLE, "--ffmpeg-path", "ffmpeg"]).is_err());
+    }
+
+    #[test]
+    fn thumbnail_generation_supports_legacy_alias() {
+        let args = CliArgs::try_parse_from([EXECUTABLE, "--use-thumbnails", "."])
+            .expect("valid legacy thumbnail alias");
+        assert!(args.thumbnails);
     }
 }
