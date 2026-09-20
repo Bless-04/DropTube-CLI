@@ -1,5 +1,6 @@
 //! Terminal dashboard layout and component rendering.
 
+use super::runtime::ViewState;
 use crate::server::ClientSnapshot;
 use crate::utils;
 use qr2term::render::{QrDark, QrLight};
@@ -76,7 +77,7 @@ pub(super) fn render(
     frame: &mut ratatui::Frame<'_>,
     config: &TuiConfig,
     clients: &[ClientSnapshot],
-    view_state: &super::ViewState,
+    view_state: &ViewState,
     log_state: &TuiWidgetState,
 ) {
     if frame.area().width < MIN_DASHBOARD_WIDTH || frame.area().height < MIN_DASHBOARD_HEIGHT {
@@ -383,9 +384,9 @@ mod tests {
         let mut terminal = Terminal::new(backend).expect("test terminal should initialize");
         let config = TuiConfig::new(PathBuf::from("videos"), "192.168.1.2".to_owned(), 8081);
 
-        let view_state = super::super::ViewState {
+        let view_state = ViewState {
             page,
-            ..super::super::ViewState::default()
+            ..ViewState::default()
         };
         let log_state = TuiWidgetState::new().set_default_display_level(log::LevelFilter::Info);
         terminal
@@ -492,7 +493,7 @@ mod tests {
                 1,
             ),
         ];
-        let view_state = super::super::ViewState::default();
+        let view_state = ViewState::default();
         let log_state = TuiWidgetState::new().set_default_display_level(log::LevelFilter::Info);
 
         terminal
@@ -526,9 +527,9 @@ mod tests {
                 ClientSnapshot::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, last_octet)), 1)
             })
             .collect::<Vec<_>>();
-        let view_state = super::super::ViewState {
+        let view_state = ViewState {
             client_scroll: usize::MAX,
-            ..super::super::ViewState::default()
+            ..ViewState::default()
         };
         let log_state = TuiWidgetState::new().set_default_display_level(log::LevelFilter::Info);
 
