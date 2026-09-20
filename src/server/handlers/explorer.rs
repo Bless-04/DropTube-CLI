@@ -43,29 +43,14 @@ async fn explorer_handler(
     State(state): State<AppState>,
     Path(sub_path): Path<String>,
 ) -> Result<Response, TemplateError> {
-    // Percent-decode the sub-path
-    let decoded_sub_path = percent_encoding::percent_decode_str(&sub_path)
-        .decode_utf8()
-        .unwrap_or_else(|_| std::borrow::Cow::Borrowed(""));
-
-    // Safe path join
-    let target_path = state.movie_directory.join(decoded_sub_path.as_ref());
-    // Prevent path traversal attack
+    // Axum has already decoded the path once. Canonicalize before checking containment.
+    let decoded_sub_path = sub_path;
+    let target_path = match state.movie_directory.join(&decoded_sub_path).canonicalize() {
+        Ok(path) => path,
+        Err(_) => return Ok(StatusCode::NOT_FOUND.into_response()),
+    };
     if !target_path.starts_with(&state.movie_directory) {
-        return Ok((
-            StatusCode::FORBIDDEN,
-            Html("<h1>403 Forbidden</h1><p>Directory traversal access is denied.</p>".to_string()),
-        )
-            .into_response());
-    }
-
-    //  Check exists
-    if !target_path.exists() {
-        return Ok((
-            StatusCode::NOT_FOUND,
-            Html("<h1>404 Not Found</h1><p>File or folder does not exist.</p>".to_string()),
-        )
-            .into_response());
+        return Ok(StatusCode::FORBIDDEN.into_response());
     }
 
     // Check if Directory or File
@@ -74,7 +59,7 @@ async fn explorer_handler(
 
         // Render Back Button if in subdirectory
         if !decoded_sub_path.is_empty() {
-            let parent_path = StdPath::new(decoded_sub_path.as_ref())
+            let parent_path = StdPath::new(&decoded_sub_path)
                 .parent()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
@@ -150,7 +135,8 @@ async fn explorer_handler(
                         <td class="px-4 py-3 text-zinc-500">Folder</td>
                     </tr>
                     "#,
-                    encoded_path, folder
+                    encoded_path,
+                    escape_html(&folder)
                 ));
             }
 
@@ -209,7 +195,7 @@ async fn explorer_handler(
                         <td class="px-4 py-3 text-zinc-400">{}</td>
                     </tr>
                     "#,
-                    encoded_path, file, type_str, size_str, time_str
+                    encoded_path, escape_html(&file), escape_html(&type_str), size_str, time_str
                 ));
             }
         }
@@ -229,7 +215,7 @@ async fn explorer_handler(
             breadcrumbs_html.push_str(&format!(
                 r#" <span class="text-zinc-700">/</span> <a href="/explorer/{}" class="text-zinc-300 hover:text-red-500">{}</a>"#,
                 utf8_percent_encode(&accumulated, NON_ALPHANUMERIC),
-                segment
+                escape_html(segment)
             ));
         }
 
@@ -251,5 +237,133 @@ async fn explorer_handler(
         // Redirect to the static /video endpoint
         let encoded_file = utf8_percent_encode(&decoded_sub_path, NON_ALPHANUMERIC).to_string();
         Ok(Redirect::temporary(&format!("/video/{}", encoded_file)).into_response())
+    }
+}
+
+// Explorer rows still use HTML fragments; escape filesystem labels before rendering them.
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::to_bytes;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use tokio::sync::{Mutex, RwLock};
+
+    struct TestDir(PathBuf);
+
+    impl TestDir {
+        fn new(prefix: &str) -> Self {
+            static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "droptube-{prefix}-{}-{}",
+                std::process::id(),
+                NEXT_ID.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir_all(&path).expect("create test dir");
+            Self(path.canonicalize().expect("canonicalize test dir"))
+        }
+
+        fn create_file(&self, relative: &str, content: &[u8]) -> PathBuf {
+            let path = self.0.join(relative);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).expect("create parent dirs");
+            }
+            fs::write(&path, content).expect("write mock file");
+            path
+        }
+
+        fn state(&self) -> AppState {
+            AppState {
+                movie_directory: self.0.clone(),
+                port: 8081,
+                depth: 255,
+                index_cache: Arc::new(RwLock::new(Vec::new())),
+                thumbnails: None,
+                scan_lock: Arc::new(Mutex::new(())),
+            }
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn filesystem_labels_are_escaped_before_inserting_html() {
+        assert_eq!(
+            super::escape_html("<b>O'Brien & \"friends\"</b>"),
+            "&lt;b&gt;O&#39;Brien &amp; &quot;friends&quot;&lt;/b&gt;"
+        );
+    }
+
+    #[tokio::test]
+    async fn explorer_root_handler_renders_directory_contents() {
+        let fixture = TestDir::new("exp-root");
+        fixture.create_file("subfolder/video.mp4", b"video");
+        fixture.create_file("top_level.mp4", b"video");
+
+        let response = explorer_root_handler(State(fixture.state()))
+            .await
+            .expect("render explorer root")
+            .into_response();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("read body");
+        let html = String::from_utf8_lossy(&body);
+
+        assert!(html.contains("subfolder"));
+        assert!(html.contains("top_level.mp4"));
+    }
+
+    #[tokio::test]
+    async fn explorer_path_handler_renders_subfolder_with_back_button() {
+        let fixture = TestDir::new("exp-sub");
+        fixture.create_file("my_folder/inner.mp4", b"video");
+
+        let response = explorer_path_handler(
+            State(fixture.state()),
+            axum::extract::Path("my_folder".to_string()),
+        )
+        .await
+        .expect("render subfolder")
+        .into_response();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("read body");
+        let html = String::from_utf8_lossy(&body);
+
+        assert!(html.contains("inner.mp4"));
+        assert!(html.contains("Go Back"));
+    }
+
+    #[tokio::test]
+    async fn explorer_path_handler_returns_not_found_for_missing_path() {
+        let fixture = TestDir::new("exp-missing");
+
+        let response = explorer_path_handler(
+            State(fixture.state()),
+            axum::extract::Path("non_existent_folder".to_string()),
+        )
+        .await
+        .expect("handler returns response")
+        .into_response();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 }

@@ -4,5 +4,5 @@ pub mod cli;
 /// Contains models related to web page state
 pub mod state;
 
-// models related to video stuff
+/// Video formats, ratings, tags, and indexed metadata.
 pub mod video;

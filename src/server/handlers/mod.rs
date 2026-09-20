@@ -1,4 +1,4 @@
-mod assets;
+pub(crate) mod assets;
 pub mod explorer;
 pub mod home;
 pub mod scan;
@@ -9,6 +9,7 @@ use axum::{
 };
 use log::error;
 
+#[derive(Debug)]
 pub struct TemplateError(pub askama::Error);
 
 impl IntoResponse for TemplateError {

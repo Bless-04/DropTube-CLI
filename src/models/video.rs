@@ -1,18 +1,25 @@
 /// Represents the supported video containers/formats
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VideoFormat {
+    /// MPEG-4 container.
     Mp4,
+    /// Matroska container.
     Mkv,
+    /// WebM container.
     Webm,
+    /// QuickTime container.
     Mov,
+    /// Audio Video Interleave container.
     Avi,
+    /// M4V container.
     M4v,
 }
 
 impl VideoFormat {
     /// Supported extensions for [VideoFormat]
-    pub const SUPPORTED_EXTS: &'static [&'static str] = &["mp4", "mkv", "webm","mov","avi","m4v"];
-    
+    pub const SUPPORTED_EXTS: &'static [&'static str] =
+        &["mp4", "mkv", "webm", "mov", "avi", "m4v"];
+
     /// Returns the `VideoFormat` for the given file extension, or `None` if unsupported.
     pub fn from_ext(ext: &str) -> Option<Self> {
         match ext.to_lowercase().as_str() {
@@ -42,11 +49,17 @@ impl VideoFormat {
 /// Represents the rating of a video (Unrated or 1-5 stars)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Rating {
+    /// No rating was specified.
     Unrated,
+    /// One-star rating.
     OneStar,
+    /// Two-star rating.
     TwoStars,
+    /// Three-star rating.
     ThreeStars,
+    /// Four-star rating.
     FourStars,
+    /// Five-star rating.
     FiveStars,
 }
 
@@ -85,13 +98,21 @@ impl Rating {
 /// Represents categories/topic tags for video grouping
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Tag {
+    /// Action videos.
     Action,
+    /// Comedy videos.
     Comedy,
+    /// Drama videos.
     Drama,
+    /// Science fiction videos.
     SciFi,
+    /// Documentary videos.
     Documentary,
+    /// Technology videos.
     Technology,
+    /// Rust programming videos.
     Rust,
+    /// A custom filename tag.
     Other(String),
 }
 

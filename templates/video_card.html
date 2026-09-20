@@ -1,0 +1,14 @@
+<article class="video-card {% if card.is_playing %}is-playing{% endif %}">
+    <a href="{{ card.watch_url }}" class="video-link" aria-label="Watch {{ card.title }}">
+        <div class="thumbnail">
+            <div class="thumbnail-placeholder" aria-hidden="true"><svg class="icon"><use href="#icon-play"/></svg><span>{{ card.format }}</span></div>
+            {% if let Some(thumbnail) = card.thumbnail_url %}
+            <img class="lazy-thumbnail" data-src="{{ thumbnail }}" alt="" width="480" height="270" loading="lazy" decoding="async">
+            <noscript><img src="{{ thumbnail }}" alt="" width="480" height="270" loading="lazy" decoding="async"></noscript>
+            {% endif %}
+            <span class="thumbnail-badge">{% if card.is_playing %}Now playing{% else %}{{ card.size }}{% endif %}</span>
+            <span class="play-overlay" aria-hidden="true"><svg class="icon"><use href="#icon-play"/></svg></span>
+        </div>
+        <div class="card-details"><span class="card-avatar" aria-hidden="true"><svg class="icon"><use href="#icon-play"/></svg></span><div class="card-copy"><h3>{{ card.title }}</h3><p class="card-meta">Local library <span aria-hidden="true">·</span> <span class="format">{{ card.format }}</span></p><p class="card-meta"><span class="time-elapsed" data-timestamp="{{ card.timestamp }}">Added to your library</span>{% if card.is_rated %}<span class="rating">{{ card.rating }}</span>{% endif %}</p><div class="card-tags">{% for tag in card.tags %}<span>{{ tag }}</span>{% endfor %}</div></div></div>
+    </a>
+</article>
