@@ -12,7 +12,6 @@ use local_ip_address::local_ip;
 use log::{Level, error, info, warn};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
