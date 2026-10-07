@@ -57,9 +57,15 @@ fn enabling_generation_panics_at_startup_if_ffmpeg_is_missing() {
         .arg(&fake_ffmpeg)
         .output()
         .expect("start droptube");
-    assert!(!output.status.success());
+    assert!(
+        !output.status.success(),
+        "Server startup should fail when thumbnail generation is enabled with an invalid FFmpeg binary"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("FFmpeg"), "{stderr}");
+    assert!(
+        stderr.contains("FFmpeg"),
+        "Error output should mention FFmpeg requirement: {stderr}"
+    );
 }
 
 #[test]
@@ -71,9 +77,15 @@ fn startup_fails_when_ffmpeg_missing_from_path() {
         .env("PATH", "")
         .output()
         .expect("start droptube");
-    assert!(!output.status.success());
+    assert!(
+        !output.status.success(),
+        "Server startup should fail when --use-thumbnails is passed but FFmpeg is missing from PATH"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("FFmpeg"), "{stderr}");
+    assert!(
+        stderr.contains("FFmpeg"),
+        "Error output should mention FFmpeg when missing from PATH: {stderr}"
+    );
 }
 
 #[test]
@@ -86,9 +98,15 @@ fn startup_fails_when_ffmpeg_path_arg_does_not_exist() {
         .arg(library.0.join("missing-ffmpeg-binary"))
         .output()
         .expect("start droptube");
-    assert!(!output.status.success());
+    assert!(
+        !output.status.success(),
+        "Server startup should fail when --ffmpeg-path points to a non-existent binary"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("does not exist"), "{stderr}");
+    assert!(
+        stderr.contains("does not exist"),
+        "Error output should state that the FFmpeg binary does not exist: {stderr}"
+    );
 }
 
 #[tokio::test]
@@ -99,12 +117,24 @@ async fn generation_is_disabled_by_default_and_sidecars_are_preserved() {
     let state = library.state(None);
     state.refresh_index().await.expect("scan");
     let index = state.index_cache.read().await;
-    assert_eq!(index.len(), 1);
-    assert_eq!(index[0].thumbnail_path.as_deref(), Some("first.jpg"));
-    assert!(!library.0.join(ThumbnailGenerator::GENERATED_PATH).exists());
+    assert_eq!(
+        index.len(),
+        1,
+        "Library index cache should contain exactly 1 scanned video"
+    );
+    assert_eq!(
+        index[0].thumbnail_path.as_deref(),
+        Some("first.jpg"),
+        "Video entry should preserve the existing sidecar thumbnail"
+    );
+    assert!(
+        !library.0.join(ThumbnailGenerator::GENERATED_PATH).exists(),
+        "Generated thumbnail directory should not exist when thumbnail generation is disabled"
+    );
     assert_eq!(
         fs::read(library.0.join("first.jpg")).expect("read sidecar"),
-        b"custom image"
+        b"custom image",
+        "Existing sidecar image file must not be modified or overwritten"
     );
 }
 
@@ -115,15 +145,22 @@ async fn refresh_waits_for_the_scan_lock_and_publishes_new_files() {
     let guard = state.scan_lock.lock().await;
     let refresh = state.refresh_index();
     tokio::pin!(refresh);
-    assert!(matches!(
-        std::future::poll_fn(|context| std::task::Poll::Ready(refresh.as_mut().poll(context)))
-            .await,
-        std::task::Poll::Pending
-    ));
+    assert!(
+        matches!(
+            std::future::poll_fn(|context| std::task::Poll::Ready(refresh.as_mut().poll(context)))
+                .await,
+            std::task::Poll::Pending
+        ),
+        "refresh_index must block while scan_lock is held by another task"
+    );
     fs::write(library.0.join("new.mp4"), b"video").expect("write video");
     drop(guard);
     refresh.await.expect("refresh finishes");
-    assert_eq!(state.index_cache.read().await.len(), 1);
+    assert_eq!(
+        state.index_cache.read().await.len(),
+        1,
+        "Index cache should reflect the newly added video once scan_lock is released"
+    );
 }
 
 /// Run with `DROPTUBE_TEST_FFMPEG` set to an FFmpeg executable, or FFmpeg on PATH.
@@ -157,7 +194,7 @@ async fn real_ffmpeg_generates_reuses_invalidates_and_handles_corrupt_videos() {
         .expect("create short fixture");
     assert!(
         output.status.success(),
-        "{}",
+        "Failed to generate test video fixture via FFmpeg: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let thumbnail = generator
@@ -165,14 +202,23 @@ async fn real_ffmpeg_generates_reuses_invalidates_and_handles_corrupt_videos() {
         .await
         .expect("generate short-video thumbnail");
     let image = fs::read(&thumbnail).expect("read JPEG");
-    assert!(image.starts_with(&[0xff, 0xd8, 0xff]));
-    assert!(image.ends_with(&[0xff, 0xd9]));
+    assert!(
+        image.starts_with(&[0xff, 0xd8, 0xff]),
+        "Generated thumbnail image must begin with JPEG SOI header (0xFF, 0xD8, 0xFF)"
+    );
+    assert!(
+        image.ends_with(&[0xff, 0xd9]),
+        "Generated thumbnail image must end with JPEG EOI marker (0xFF, 0xD9)"
+    );
     let dimensions = Command::new(&executable)
         .args(["-hide_banner", "-i"])
         .arg(&thumbnail)
         .output()
         .expect("inspect image");
-    assert!(String::from_utf8_lossy(&dimensions.stderr).contains("480x270"));
+    assert!(
+        String::from_utf8_lossy(&dimensions.stderr).contains("480x270"),
+        "Generated thumbnail should have expected resolution 480x270"
+    );
     let original_time = fs::metadata(&thumbnail)
         .expect("metadata")
         .modified()
@@ -207,13 +253,17 @@ async fn real_ffmpeg_generates_reuses_invalidates_and_handles_corrupt_videos() {
             .arg(directory.file_name().expect("DropTube directory name"))
             .status()
             .expect("unhide fixture data directory");
-        assert!(status.success());
+        assert!(
+            status.success(),
+            "Command 'attrib -H' to unhide fixture data directory should succeed"
+        );
         assert_eq!(
             fs::metadata(directory)
                 .expect("directory metadata")
                 .file_attributes()
                 & 0x2,
-            0
+            0,
+            "Data directory should no longer have the Hidden attribute after attrib -H"
         );
         attributes
     };
@@ -222,14 +272,16 @@ async fn real_ffmpeg_generates_reuses_invalidates_and_handles_corrupt_videos() {
             .generate_thumbnail(&source)
             .await
             .expect("reuse thumbnail"),
-        thumbnail
+        thumbnail,
+        "Regenerating thumbnail for the same file should return the existing cached thumbnail path"
     );
     assert_eq!(
         fs::metadata(&thumbnail)
             .expect("metadata")
             .modified()
             .expect("mtime"),
-        original_time
+        original_time,
+        "Reusing an up-to-date cached thumbnail must not alter its file modification timestamp"
     );
 
     #[cfg(windows)]
@@ -266,12 +318,16 @@ async fn real_ffmpeg_generates_reuses_invalidates_and_handles_corrupt_videos() {
             .expect("metadata")
             .modified()
             .expect("mtime")
-            > old
+            > old,
+        "Regenerating a stale thumbnail must update its file modification timestamp beyond the old time"
     );
 
     let corrupt = library.0.join("corrupt.mp4");
     fs::write(&corrupt, b"not a video").expect("write corrupt fixture");
-    assert!(generator.generate_thumbnail(&corrupt).await.is_err());
+    assert!(
+        generator.generate_thumbnail(&corrupt).await.is_err(),
+        "Thumbnail generator should return an error when processing a corrupted video file"
+    );
     assert!(
         !library
             .0
@@ -279,7 +335,8 @@ async fn real_ffmpeg_generates_reuses_invalidates_and_handles_corrupt_videos() {
                 "{}/corrupt.mp4.jpg",
                 ThumbnailGenerator::GENERATED_PATH
             ))
-            .exists()
+            .exists(),
+        "No cached thumbnail image should be created on disk for a corrupted video file"
     );
     let sidecar = source.with_extension("jpg");
     fs::write(&sidecar, b"custom thumbnail").expect("write sidecar");
@@ -289,11 +346,19 @@ async fn real_ffmpeg_generates_reuses_invalidates_and_handles_corrupt_videos() {
         .await
         .expect("scan with corrupt video");
     let index = state.index_cache.read().await;
-    assert_eq!(index.len(), 2);
-    assert!(index.iter().any(|video| video.thumbnail_path.as_deref()
-        == Some("nested & space/[action] O'Brien & demo.jpg")));
+    assert_eq!(
+        index.len(),
+        2,
+        "Library index should contain both valid and corrupt video entries"
+    );
+    assert!(
+        index.iter().any(|video| video.thumbnail_path.as_deref()
+            == Some("nested & space/[action] O'Brien & demo.jpg")),
+        "Video with adjacent image sidecar should preserve its sidecar thumbnail path"
+    );
     assert_eq!(
         fs::read(&sidecar).expect("sidecar retained"),
-        b"custom thumbnail"
+        b"custom thumbnail",
+        "Existing custom sidecar image content must not be modified or overwritten"
     );
 }

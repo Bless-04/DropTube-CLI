@@ -217,32 +217,58 @@ mod tests {
     fn parse_video_info_plain_name() {
         let path = StdPath::new("my_cool_video.mp4");
         let info = parse_video_info(path);
-        assert_eq!(info.display_name, "my cool video");
-        assert_eq!(info.rating, Rating::Unrated);
-        assert!(info.tags.is_empty());
+        assert_eq!(
+            info.display_name, "my cool video",
+            "Display name should replace underscores with spaces"
+        );
+        assert_eq!(
+            info.rating,
+            Rating::Unrated,
+            "Video without rating tag should parse as Rating::Unrated"
+        );
+        assert!(
+            info.tags.is_empty(),
+            "Video without bracketed tags should have empty tags set"
+        );
     }
 
     #[test]
     fn parse_video_info_with_rating() {
         let path = StdPath::new("[4] Awesome_Movie.mkv");
         let info = parse_video_info(path);
-        assert_eq!(info.rating, Rating::FourStars);
-        assert_eq!(info.display_name, "Awesome Movie");
+        assert_eq!(
+            info.rating,
+            Rating::FourStars,
+            "Bracketed [4] prefix should parse to Rating::FourStars"
+        );
+        assert_eq!(
+            info.display_name, "Awesome Movie",
+            "Display name should strip bracketed rating and format name with spaces"
+        );
     }
 
     #[test]
     fn parse_video_info_with_tags() {
         let path = StdPath::new("[rust,tech] My_Talk.mp4");
         let info = parse_video_info(path);
-        assert!(info.tags.contains(&Tag::Rust));
-        assert!(info.tags.contains(&Tag::Technology));
+        assert!(
+            info.tags.contains(&Tag::Rust),
+            "Bracketed tag [rust,tech] should include Tag::Rust"
+        );
+        assert!(
+            info.tags.contains(&Tag::Technology),
+            "Bracketed tag [rust,tech] should include Tag::Technology"
+        );
     }
 
     #[test]
     fn scan_params_should_recurse_at_limit() {
         let p = ScanDirectoryParams::new(PathBuf::from("."), 2);
         // depth 0, max 2 — should recurse
-        assert!(p.should_recurse());
+        assert!(
+            p.should_recurse(),
+            "ScanDirectoryParams with current_depth 0 and max_depth 2 should allow recursion"
+        );
     }
 
     #[test]
@@ -250,14 +276,20 @@ mod tests {
         let mut p = ScanDirectoryParams::new(PathBuf::from("."), 0);
         p.current_depth = 0;
         // max_depth 0 means top-level only — must NOT recurse
-        assert!(!p.should_recurse());
+        assert!(
+            !p.should_recurse(),
+            "ScanDirectoryParams with max_depth 0 should NOT recurse into subdirectories"
+        );
     }
 
     #[test]
     fn scan_params_unlimited_always_recurses() {
         let mut p = ScanDirectoryParams::new(PathBuf::from("."), u8::MAX);
         p.current_depth = 100;
-        assert!(p.should_recurse());
+        assert!(
+            p.should_recurse(),
+            "ScanDirectoryParams with max_depth u8::MAX should always allow recursion"
+        );
     }
 
     struct TestDir(PathBuf);
@@ -296,8 +328,14 @@ mod tests {
         let fixture = TestDir::new("scan-empty");
         let mut params = ScanDirectoryParams::new(fixture.0.clone(), 255);
         scan_directory(&mut params);
-        assert!(params.videos.is_empty());
-        assert_eq!(params.count, 0);
+        assert!(
+            params.videos.is_empty(),
+            "Scanning an empty directory should return no videos"
+        );
+        assert_eq!(
+            params.count, 0,
+            "Total examined file count should be 0 for an empty folder"
+        );
     }
 
     #[test]
@@ -317,9 +355,17 @@ mod tests {
         let mut params = ScanDirectoryParams::new(fixture.0.clone(), 0);
         scan_directory(&mut params);
 
-        assert_eq!(params.videos.len(), VideoFormat::SUPPORTED_EXTS.len());
+        assert_eq!(
+            params.videos.len(),
+            VideoFormat::SUPPORTED_EXTS.len(),
+            "Scanner should only collect files matching supported video extensions"
+        );
         // count includes all files examined (6 supported + 2 unsupported + 3 non-video = 11)
-        assert_eq!(params.count, VideoFormat::SUPPORTED_EXTS.len() + 5);
+        assert_eq!(
+            params.count,
+            VideoFormat::SUPPORTED_EXTS.len() + 5,
+            "Total examined file count should include both video and non-video files"
+        );
 
         for ext in VideoFormat::SUPPORTED_EXTS {
             assert!(
@@ -327,7 +373,7 @@ mod tests {
                     .videos
                     .iter()
                     .any(|v| v.file_name == format!("video.{ext}")),
-                "missing format: {ext}"
+                "Missing supported video format in scan results: {ext}"
             );
         }
     }
@@ -343,25 +389,46 @@ mod tests {
         // Depth 0: only root
         let mut p0 = ScanDirectoryParams::new(fixture.0.clone(), 0);
         scan_directory(&mut p0);
-        assert_eq!(p0.videos.len(), 1);
-        assert_eq!(p0.videos[0].file_name, "root.mp4");
+        assert_eq!(
+            p0.videos.len(), 1,
+            "Depth 0 scan should only collect root-level videos"
+        );
+        assert_eq!(
+            p0.videos[0].file_name, "root.mp4",
+            "Root-level video should be 'root.mp4'"
+        );
 
         // Depth 1: root + level1
         let mut p1 = ScanDirectoryParams::new(fixture.0.clone(), 1);
         scan_directory(&mut p1);
-        assert_eq!(p1.videos.len(), 2);
-        assert!(p1.videos.iter().any(|v| v.file_name == "root.mp4"));
-        assert!(p1.videos.iter().any(|v| v.file_name.contains("level1.mp4")));
+        assert_eq!(
+            p1.videos.len(), 2,
+            "Depth 1 scan should collect root and level 1 videos"
+        );
+        assert!(
+            p1.videos.iter().any(|v| v.file_name == "root.mp4"),
+            "Depth 1 results should include root.mp4"
+        );
+        assert!(
+            p1.videos.iter().any(|v| v.file_name.contains("level1.mp4")),
+            "Depth 1 results should include level1.mp4"
+        );
 
         // Depth 2: root + level1 + level2
         let mut p2 = ScanDirectoryParams::new(fixture.0.clone(), 2);
         scan_directory(&mut p2);
-        assert_eq!(p2.videos.len(), 3);
+        assert_eq!(
+            p2.videos.len(), 3,
+            "Depth 2 scan should collect videos down to level 2"
+        );
 
         // Unlimited depth (255): all 4
         let mut p_all = ScanDirectoryParams::new(fixture.0.clone(), 255);
         scan_directory(&mut p_all);
-        assert_eq!(p_all.videos.len(), 4);
+        assert_eq!(
+            p_all.videos.len(), 4,
+            "Unlimited depth scan should collect all 4 nested videos"
+        );
     }
 
     #[test]
@@ -379,13 +446,25 @@ mod tests {
         scan_directory(&mut params);
 
         let v1 = params.videos.iter().find(|v| v.file_name == "film1.mp4").unwrap();
-        assert_eq!(v1.thumbnail_path.as_deref(), Some("film1.jpg"));
+        assert_eq!(
+            v1.thumbnail_path.as_deref(),
+            Some("film1.jpg"),
+            "film1.mp4 should be paired with adjacent sidecar thumbnail film1.jpg"
+        );
 
         let v2 = params.videos.iter().find(|v| v.file_name == "film2.mkv").unwrap();
-        assert_eq!(v2.thumbnail_path.as_deref(), Some("film2.png"));
+        assert_eq!(
+            v2.thumbnail_path.as_deref(),
+            Some("film2.png"),
+            "film2.mkv should be paired with adjacent sidecar thumbnail film2.png"
+        );
 
         let v3 = params.videos.iter().find(|v| v.file_name == "film3.webm").unwrap();
-        assert_eq!(v3.thumbnail_path, None);
+        assert_eq!(
+            v3.thumbnail_path,
+            None,
+            "film3.webm has no adjacent sidecar and should have None thumbnail_path"
+        );
     }
 
     #[test]
@@ -401,8 +480,14 @@ mod tests {
         let mut params = ScanDirectoryParams::new(fixture.0.clone(), 255);
         scan_directory(&mut params);
 
-        assert_eq!(params.videos.len(), 1);
-        assert_eq!(params.videos[0].file_name, "video.mp4");
+        assert_eq!(
+            params.videos.len(), 1,
+            "Scanner must ignore videos stored inside the internal .droptube directory"
+        );
+        assert_eq!(
+            params.videos[0].file_name, "video.mp4",
+            "Only user videos outside .droptube should be discovered"
+        );
     }
 
     #[test]
@@ -416,17 +501,36 @@ mod tests {
         let mut params = ScanDirectoryParams::new(fixture.0.clone(), 255);
         scan_directory(&mut params);
 
-        assert_eq!(params.videos.len(), 1);
+        assert_eq!(
+            params.videos.len(), 1,
+            "Scanner should find exactly 1 video in subdirectories"
+        );
         let video = &params.videos[0];
-        assert_eq!(video.display_name, "Advanced Patterns 2024");
-        assert_eq!(video.rating, Rating::FiveStars);
-        assert!(video.tags.contains(&Tag::Rust));
-        assert!(video.tags.contains(&Tag::Technology));
+        assert_eq!(
+            video.display_name, "Advanced Patterns 2024",
+            "Display name should strip bracketed tags and format dots and underscores"
+        );
+        assert_eq!(
+            video.rating, Rating::FiveStars,
+            "Rating [5] in filename should parse to Rating::FiveStars"
+        );
+        assert!(
+            video.tags.contains(&Tag::Rust),
+            "Parsed tags should contain Tag::Rust"
+        );
+        assert!(
+            video.tags.contains(&Tag::Technology),
+            "Parsed tags should contain Tag::Technology"
+        );
         // Verify web-friendly forward slashes on all platforms
-        assert!(!video.file_name.contains('\\'));
+        assert!(
+            !video.file_name.contains('\\'),
+            "Scanned relative file path must use forward slashes for cross-platform web URL compatibility"
+        );
         assert_eq!(
             video.file_name,
-            "tutorials/rust/[5] [rust,tech] Advanced_Patterns.2024.mp4"
+            "tutorials/rust/[5] [rust,tech] Advanced_Patterns.2024.mp4",
+            "Scanned file_name should match the expected relative path with forward slashes"
         );
     }
 }

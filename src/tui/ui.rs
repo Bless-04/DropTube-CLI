@@ -403,25 +403,56 @@ mod tests {
 
     #[test]
     fn pages_cycle_in_both_directions() {
-        assert_eq!(Page::Dashboard.next(), Page::Logs);
-        assert_eq!(Page::Logs.next(), Page::QrCode);
-        assert_eq!(Page::QrCode.next(), Page::Dashboard);
-        assert_eq!(Page::Dashboard.previous(), Page::QrCode);
+        assert_eq!(
+            Page::Dashboard.next(),
+            Page::Logs,
+            "Next page after Dashboard should be Logs"
+        );
+        assert_eq!(
+            Page::Logs.next(),
+            Page::QrCode,
+            "Next page after Logs should be QrCode"
+        );
+        assert_eq!(
+            Page::QrCode.next(),
+            Page::Dashboard,
+            "Next page after QrCode should wrap around to Dashboard"
+        );
+        assert_eq!(
+            Page::Dashboard.previous(),
+            Page::QrCode,
+            "Previous page before Dashboard should wrap around to QrCode"
+        );
     }
 
     #[test]
     fn dashboard_renders_menu_server_and_empty_client_details() {
         let rendered = rendered_page(Page::Dashboard, 100, 24);
-        assert!(rendered.contains("Dashboard"));
-        assert!(rendered.contains("http://192.168.1.2:8081"));
-        assert!(rendered.contains("No clients observed yet"));
+        assert!(
+            rendered.contains("Dashboard"),
+            "Dashboard page should render Dashboard header title"
+        );
+        assert!(
+            rendered.contains("http://192.168.1.2:8081"),
+            "Dashboard page should render server LAN URL"
+        );
+        assert!(
+            rendered.contains("No clients observed yet"),
+            "Dashboard page should show empty state when no clients have connected"
+        );
     }
 
     #[test]
     fn logs_have_a_dedicated_page() {
         let rendered = rendered_page(Page::Logs, 100, 24);
-        assert!(rendered.contains("Logs"));
-        assert!(!rendered.contains("No clients observed yet"));
+        assert!(
+            rendered.contains("Logs"),
+            "Logs page should render Logs tab title"
+        );
+        assert!(
+            !rendered.contains("No clients observed yet"),
+            "Logs page should not render dashboard client panel"
+        );
     }
 
     #[test]
@@ -438,44 +469,88 @@ mod tests {
 
         let rendered = rendered_page(Page::Logs, 100, 24);
 
-        assert!(rendered.contains("WARN"));
-        assert!(rendered.contains("droptube::tui_widget_test"));
-        assert!(rendered.contains("tui-logger-integration-record"));
+        assert!(
+            rendered.contains("WARN"),
+            "Logs page should render log severity level WARN"
+        );
+        assert!(
+            rendered.contains("droptube::tui_widget_test"),
+            "Logs page should render log target name"
+        );
+        assert!(
+            rendered.contains("tui-logger-integration-record"),
+            "Logs page should render formatted log record message"
+        );
     }
 
     #[test]
     fn qr_page_renders_without_ansi_escape_sequences() {
         let rendered = rendered_page(Page::QrCode, 100, 34);
-        assert!(rendered.contains("http://192.168.1.2:8081"));
-        assert!(rendered.contains('▄'));
-        assert!(!rendered.contains('\u{1b}'));
+        assert!(
+            rendered.contains("http://192.168.1.2:8081"),
+            "QR page should display formatted server address URL"
+        );
+        assert!(
+            rendered.contains('▄'),
+            "QR page should render Unicode lower half block character for QR matrix"
+        );
+        assert!(
+            !rendered.contains('\u{1b}'),
+            "QR page rendering should not contain raw ANSI escape sequences"
+        );
     }
 
     #[test]
     fn qr_page_fits_an_eighty_by_twenty_four_terminal() {
         let rendered = rendered_page(Page::QrCode, 80, 24);
-        assert!(rendered.contains('▄'));
-        assert!(!rendered.contains("Terminal too small for QR code"));
+        assert!(
+            rendered.contains('▄'),
+            "QR code should fit and render blocks on standard 80x24 terminal"
+        );
+        assert!(
+            !rendered.contains("Terminal too small for QR code"),
+            "80x24 terminal should not show small-terminal fallback message"
+        );
     }
 
     #[test]
     fn small_qr_page_has_a_readable_fallback() {
         let rendered = rendered_page(Page::QrCode, 70, 16);
-        assert!(rendered.contains("Terminal too small"));
-        assert!(rendered.contains("QR code"));
+        assert!(
+            rendered.contains("Terminal too small"),
+            "Compact terminal under 80x24 should display 'Terminal too small' guidance"
+        );
+        assert!(
+            rendered.contains("QR code"),
+            "Compact terminal fallback guidance should specifically mention QR code"
+        );
     }
 
     #[test]
     fn very_small_terminal_has_a_global_resize_message() {
         let rendered = rendered_page(Page::Dashboard, 50, 8);
-        assert!(rendered.contains("Terminal too small for the DropTube dashboard"));
-        assert!(rendered.contains("70×14"));
+        assert!(
+            rendered.contains("Terminal too small for the DropTube dashboard"),
+            "Terminal smaller than minimum bounds should display global resize warning"
+        );
+        assert!(
+            rendered.contains("70×14"),
+            "Resize warning message should state required minimum size 70×14"
+        );
     }
 
     #[test]
     fn active_clients_are_green_and_disconnected_clients_are_red() {
-        assert_eq!(client_status(true), ("active", Color::Green));
-        assert_eq!(client_status(false), ("disconnected", Color::Red));
+        assert_eq!(
+            client_status(true),
+            ("active", Color::Green),
+            "Active client status should be 'active' formatted in Green"
+        );
+        assert_eq!(
+            client_status(false),
+            ("disconnected", Color::Red),
+            "Disconnected client status should be 'disconnected' formatted in Red"
+        );
     }
 
     #[test]
@@ -512,9 +587,18 @@ mod tests {
             .filter(|cell| cell.fg == Color::Red)
             .map(|cell| cell.symbol())
             .collect::<String>();
-        assert!(green_text.contains("192.168.1.10"));
-        assert!(green_text.contains("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"));
-        assert!(red_text.contains("192.168.1.11"));
+        assert!(
+            green_text.contains("192.168.1.10"),
+            "Active client IPv4 address should be colored Green"
+        );
+        assert!(
+            green_text.contains("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"),
+            "Active client IPv6 address should be colored Green"
+        );
+        assert!(
+            red_text.contains("192.168.1.11"),
+            "Disconnected client IP address should be colored Red"
+        );
     }
 
     #[test]
@@ -543,7 +627,13 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol())
             .collect::<String>();
-        assert!(rendered.contains("192.168.1.12"));
-        assert!(!rendered.contains("192.168.1.1 "));
+        assert!(
+            rendered.contains("192.168.1.12"),
+            "Scrolled client viewport should show the last client entry"
+        );
+        assert!(
+            !rendered.contains("192.168.1.1 "),
+            "Scrolled client viewport should have scrolled past early client entries"
+        );
     }
 }

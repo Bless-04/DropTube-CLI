@@ -99,13 +99,21 @@ mod tests {
         let directory = prepare_droptube_directory(&parent)
             .await
             .expect("prepare DropTube directory");
-        assert_eq!(directory, parent.join(DROPTUBE_DIRECTORY));
-        assert!(fs::metadata(&directory).await.expect("metadata").is_dir());
+        assert_eq!(
+            directory,
+            parent.join(DROPTUBE_DIRECTORY),
+            "prepare_droptube_directory should return path to parent/.droptube"
+        );
+        assert!(
+            fs::metadata(&directory).await.expect("metadata").is_dir(),
+            "Prepared DropTube directory must exist on disk as a directory"
+        );
         assert_eq!(
             prepare_droptube_directory(&parent)
                 .await
                 .expect("prepare existing DropTube directory"),
-            directory
+            directory,
+            "Re-invoking prepare_droptube_directory should be idempotent and return the same directory"
         );
 
         #[cfg(windows)]

@@ -84,26 +84,45 @@ mod tests {
         );
         let args = args_result.expect("checked above");
 
-        assert_eq!(args.port, None);
-        assert_eq!(args.path, PathBuf::from("."));
-        assert_eq!(args.max_depth, 0);
-        assert!(!args.open_tui);
-        assert!(!args.thumbnails);
-        assert!(args.ffmpeg_path.is_none());
+        assert_eq!(args.port, None, "Default port should be None");
+        assert_eq!(
+            args.path,
+            PathBuf::from("."),
+            "Default movie directory path should be '.'"
+        );
+        assert_eq!(
+            args.max_depth, 0,
+            "Default max recursion depth should be 0 (top-level only)"
+        );
+        assert!(!args.open_tui, "TUI mode should be disabled by default");
+        assert!(
+            !args.thumbnails,
+            "Thumbnail generation should be disabled by default"
+        );
+        assert!(
+            args.ffmpeg_path.is_none(),
+            "Default ffmpeg_path should be None"
+        );
     }
 
     #[test]
     fn tui_is_only_enabled_by_its_flag() {
         let args_result = CliArgs::try_parse_from([EXECUTABLE, "--open-tui"]);
-        assert!(args_result.is_ok());
+        assert!(args_result.is_ok(), "Parsing '--open-tui' should succeed");
         if let Ok(args) = args_result {
-            assert!(args.open_tui);
+            assert!(args.open_tui, "'--open-tui' flag should set open_tui to true");
         }
 
         let default_result = CliArgs::try_parse_from([EXECUTABLE]);
-        assert!(default_result.is_ok());
+        assert!(
+            default_result.is_ok(),
+            "Parsing default CLI arguments without flags should succeed"
+        );
         if let Ok(args) = default_result {
-            assert!(!args.open_tui);
+            assert!(
+                !args.open_tui,
+                "Default CLI arguments should have open_tui as false"
+            );
         }
     }
 
@@ -111,21 +130,28 @@ mod tests {
     fn parse_args_depth_flag() {
         let args_result = CliArgs::try_parse_from([EXECUTABLE, "--depth", "3"]);
         let args = args_result.expect("valid args");
-        assert_eq!(args.max_depth, 3);
-        assert_eq!(args.path, PathBuf::from("."));
+        assert_eq!(args.max_depth, 3, "--depth 3 should set max_depth to 3");
+        assert_eq!(
+            args.path,
+            PathBuf::from("."),
+            "Path should default to '.' when not explicitly provided"
+        );
     }
 
     #[test]
     fn parse_args_rejects_invalid_depth() {
         let args_result = CliArgs::try_parse_from([EXECUTABLE, "--depth", "999", "."]);
-        assert!(args_result.is_err());
+        assert!(
+            args_result.is_err(),
+            "--depth with an out-of-range value (999 > 255) must fail parsing"
+        );
     }
 
     #[test]
     fn parse_args_depth_short_flag() {
         let args_result = CliArgs::try_parse_from([EXECUTABLE, ".", "-r", "5"]);
         let args = args_result.expect("valid args");
-        assert_eq!(args.max_depth, 5);
+        assert_eq!(args.max_depth, 5, "-r short flag should set max_depth to 5");
     }
 
     struct TestDir(PathBuf);
@@ -168,11 +194,21 @@ mod tests {
         let args =
             CliArgs::try_parse_from([EXECUTABLE, "--use-thumbnails", "--ffmpeg-path", ffmpeg_str])
                 .expect("valid thumbnail options");
-        assert!(args.thumbnails);
-        assert_eq!(args.ffmpeg_path, Some(fake_ffmpeg.clone()));
+        assert!(
+            args.thumbnails,
+            "--use-thumbnails should enable the thumbnails flag"
+        );
+        assert_eq!(
+            args.ffmpeg_path,
+            Some(fake_ffmpeg.clone()),
+            "--ffmpeg-path should record the custom FFmpeg executable path"
+        );
 
         // --ffmpeg-path without --thumbnails or its aliases must fail
-        assert!(CliArgs::try_parse_from([EXECUTABLE, "--ffmpeg-path", ffmpeg_str]).is_err());
+        assert!(
+            CliArgs::try_parse_from([EXECUTABLE, "--ffmpeg-path", ffmpeg_str]).is_err(),
+            "--ffmpeg-path without enabling thumbnails flag must fail CLI parsing"
+        );
     }
 
     #[test]
@@ -206,16 +242,25 @@ mod tests {
         let dir_str = fixture.0.to_str().expect("valid utf-8 path");
 
         let args = CliArgs::try_parse_from([EXECUTABLE, dir_str]).expect("valid directory arg");
-        assert_eq!(args.path, fixture.0);
+        assert_eq!(
+            args.path, fixture.0,
+            "CLI path argument should match the provided existing directory"
+        );
     }
 
     #[test]
     fn path_validation_rejects_missing_directory() {
         let missing = "totally_missing_movie_library_dir_42";
         let result = CliArgs::try_parse_from([EXECUTABLE, missing]);
-        assert!(result.is_err());
+        assert!(
+            result.is_err(),
+            "Specifying a non-existent movie directory must fail CLI validation"
+        );
         let err_msg = result.err().unwrap().to_string();
-        assert!(err_msg.contains("does not exist"));
+        assert!(
+            err_msg.contains("does not exist"),
+            "Error message should state the directory does not exist: {err_msg}"
+        );
     }
 
     #[test]
@@ -225,9 +270,15 @@ mod tests {
         let file_str = file.to_str().expect("valid utf-8 path");
 
         let result = CliArgs::try_parse_from([EXECUTABLE, file_str]);
-        assert!(result.is_err());
+        assert!(
+            result.is_err(),
+            "Specifying a regular file instead of a directory must fail CLI validation"
+        );
         let err_msg = result.err().unwrap().to_string();
-        assert!(err_msg.contains("is not a directory"));
+        assert!(
+            err_msg.contains("is not a directory"),
+            "Error message should state the path is not a directory: {err_msg}"
+        );
     }
 
     #[test]
@@ -250,15 +301,29 @@ mod tests {
     #[test]
     fn port_parsing_accepts_valid_and_rejects_invalid() {
         let args_short = CliArgs::try_parse_from([EXECUTABLE, "-p", "9090"]).expect("valid port");
-        assert_eq!(args_short.port, Some(9090));
+        assert_eq!(
+            args_short.port,
+            Some(9090),
+            "-p short flag should set port to 9090"
+        );
 
         let args_long =
             CliArgs::try_parse_from([EXECUTABLE, "--port", "12345"]).expect("valid port");
-        assert_eq!(args_long.port, Some(12345));
+        assert_eq!(
+            args_long.port,
+            Some(12345),
+            "--port long flag should set port to 12345"
+        );
 
         // Out of u16 range
-        assert!(CliArgs::try_parse_from([EXECUTABLE, "-p", "70000"]).is_err());
+        assert!(
+            CliArgs::try_parse_from([EXECUTABLE, "-p", "70000"]).is_err(),
+            "Port number exceeding valid u16 range (70000 > 65535) must fail parsing"
+        );
         // Non-numeric
-        assert!(CliArgs::try_parse_from([EXECUTABLE, "-p", "invalid"]).is_err());
+        assert!(
+            CliArgs::try_parse_from([EXECUTABLE, "-p", "invalid"]).is_err(),
+            "Non-numeric port argument must fail parsing"
+        );
     }
 }

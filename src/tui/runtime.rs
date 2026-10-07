@@ -169,6 +169,9 @@ mod tests {
 
         drop(guard);
 
-        assert!(!log_control.screen_active());
+        assert!(
+            !log_control.screen_active(),
+            "TuiScreenGuard must deactivate alternate screen flag when dropped to re-enable standard terminal logs"
+        );
     }
 }

@@ -26,6 +26,10 @@ mod tests {
 
     #[test]
     fn local_url_contains_the_address_and_port() {
-        assert_eq!(local_url_of("192.168.1.4", 8081), "http://192.168.1.4:8081");
+        assert_eq!(
+            local_url_of("192.168.1.4", 8081),
+            "http://192.168.1.4:8081",
+            "local_url_of should format the given IP address and port into a standard HTTP URL"
+        );
     }
 }

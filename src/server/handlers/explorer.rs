@@ -304,7 +304,8 @@ mod tests {
     fn filesystem_labels_are_escaped_before_inserting_html() {
         assert_eq!(
             super::escape_html("<b>O'Brien & \"friends\"</b>"),
-            "&lt;b&gt;O&#39;Brien &amp; &quot;friends&quot;&lt;/b&gt;"
+            "&lt;b&gt;O&#39;Brien &amp; &quot;friends&quot;&lt;/b&gt;",
+            "HTML special characters (<, >, ', &, \") should be escaped to safe entities"
         );
     }
 
@@ -319,14 +320,24 @@ mod tests {
             .expect("render explorer root")
             .into_response();
 
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "explorer_root_handler should return HTTP 200 OK"
+        );
         let body = to_bytes(response.into_body(), 1024 * 1024)
             .await
             .expect("read body");
         let html = String::from_utf8_lossy(&body);
 
-        assert!(html.contains("subfolder"));
-        assert!(html.contains("top_level.mp4"));
+        assert!(
+            html.contains("subfolder"),
+            "Explorer root HTML should list the subfolder name"
+        );
+        assert!(
+            html.contains("top_level.mp4"),
+            "Explorer root HTML should list the top-level video file"
+        );
     }
 
     #[tokio::test]
@@ -342,14 +353,24 @@ mod tests {
         .expect("render subfolder")
         .into_response();
 
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "explorer_path_handler should return HTTP 200 OK for valid subfolder"
+        );
         let body = to_bytes(response.into_body(), 1024 * 1024)
             .await
             .expect("read body");
         let html = String::from_utf8_lossy(&body);
 
-        assert!(html.contains("inner.mp4"));
-        assert!(html.contains("Go Back"));
+        assert!(
+            html.contains("inner.mp4"),
+            "Subfolder explorer HTML should list the inner video file"
+        );
+        assert!(
+            html.contains("Go Back"),
+            "Subfolder explorer HTML should display a 'Go Back' navigation link"
+        );
     }
 
     #[tokio::test]
@@ -364,6 +385,10 @@ mod tests {
         .expect("handler returns response")
         .into_response();
 
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response.status(),
+            StatusCode::NOT_FOUND,
+            "explorer_path_handler should return HTTP 404 NOT_FOUND for non-existent path"
+        );
     }
 }

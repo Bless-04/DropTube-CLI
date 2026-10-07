@@ -137,9 +137,18 @@ mod tests {
             .target("dependency")
             .build();
 
-        assert!(bridge.enabled(&app_info));
-        assert!(!bridge.enabled(&app_debug));
-        assert!(!bridge.enabled(&dependency_error));
+        assert!(
+            bridge.enabled(&app_info),
+            "TuiLoggerBridge should allow Info records for droptube target"
+        );
+        assert!(
+            !bridge.enabled(&app_debug),
+            "TuiLoggerBridge should filter out Debug records when max level is Info"
+        );
+        assert!(
+            !bridge.enabled(&dependency_error),
+            "TuiLoggerBridge should filter out records from external dependency targets"
+        );
     }
 
     #[test]
@@ -147,9 +156,15 @@ mod tests {
         let control = TuiLogControl::new();
 
         control.set_screen_active(true);
-        assert!(control.screen_active());
+        assert!(
+            control.screen_active(),
+            "TuiLogControl should report screen_active as true after set_screen_active(true)"
+        );
 
         control.set_screen_active(false);
-        assert!(!control.screen_active());
+        assert!(
+            !control.screen_active(),
+            "TuiLogControl should report screen_active as false after set_screen_active(false)"
+        );
     }
 }
