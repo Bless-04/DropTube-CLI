@@ -55,6 +55,10 @@ mod tests {
         };
 
         let status = refresh_index_handler(State(state)).await;
-        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "refresh_index_handler should return HTTP 200 OK after scanning index"
+        );
     }
 }

@@ -184,7 +184,7 @@ cargo test --all-features --all-targets
 cargo clippy --all-targets --all-features -- -D warnings
 cargo fmt -- --check
 node --check public/index.js
-node --test tests/frontend.test.cjs
+node --test
 ```
 
 The real-media regression test is explicitly opt-in so the normal test suite does not require FFmpeg. Run it with FFmpeg

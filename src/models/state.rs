@@ -156,9 +156,19 @@ mod tests {
         state.refresh_index().await.expect("refresh index");
 
         let index = state.index_cache.read().await;
-        assert_eq!(index.len(), 2);
-        assert_eq!(index[0].file_name, "newer.mp4");
-        assert_eq!(index[1].file_name, "older.mp4");
+        assert_eq!(
+            index.len(),
+            2,
+            "Index cache should contain exactly 2 scanned videos"
+        );
+        assert_eq!(
+            index[0].file_name, "newer.mp4",
+            "Videos should be sorted by modified time descending (newest file 'newer.mp4' first)"
+        );
+        assert_eq!(
+            index[1].file_name, "older.mp4",
+            "Older file 'older.mp4' should appear second in descending time order"
+        );
     }
 
     #[tokio::test]
@@ -171,8 +181,16 @@ mod tests {
         state.refresh_index().await.expect("refresh index");
 
         let index = state.index_cache.read().await;
-        assert_eq!(index.len(), 1);
-        assert_eq!(index[0].thumbnail_path.as_deref(), Some("show.jpg"));
+        assert_eq!(
+            index.len(),
+            1,
+            "Index cache should contain the single scanned video"
+        );
+        assert_eq!(
+            index[0].thumbnail_path.as_deref(),
+            Some("show.jpg"),
+            "Scanned video should be paired with existing sidecar thumbnail 'show.jpg'"
+        );
     }
 
     #[tokio::test]
@@ -184,12 +202,20 @@ mod tests {
         // max_depth = 0: only root
         let state0 = fixture.state(0);
         state0.refresh_index().await.expect("refresh index");
-        assert_eq!(state0.index_cache.read().await.len(), 1);
+        assert_eq!(
+            state0.index_cache.read().await.len(),
+            1,
+            "Scanning with max_depth 0 should discover only root-level videos"
+        );
 
         // max_depth = 1: root and sub
         let state1 = fixture.state(1);
         state1.refresh_index().await.expect("refresh index");
-        assert_eq!(state1.index_cache.read().await.len(), 2);
+        assert_eq!(
+            state1.index_cache.read().await.len(),
+            2,
+            "Scanning with max_depth 1 should discover both root and subfolder videos"
+        );
     }
 
     #[tokio::test]
@@ -208,11 +234,15 @@ mod tests {
             state.refresh_index(),
         );
 
-        assert!(r1.is_ok());
-        assert!(r2.is_ok());
-        assert!(r3.is_ok());
+        assert!(r1.is_ok(), "First concurrent refresh call should succeed");
+        assert!(r2.is_ok(), "Second concurrent refresh call should succeed");
+        assert!(r3.is_ok(), "Third concurrent refresh call should succeed");
 
-        assert_eq!(state.index_cache.read().await.len(), 5);
+        assert_eq!(
+            state.index_cache.read().await.len(),
+            5,
+            "Index cache should contain all 5 videos after concurrent refresh operations complete"
+        );
     }
 }
 

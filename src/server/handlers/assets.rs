@@ -34,17 +34,25 @@ mod tests {
         let response = static_handler(Path("index.js".to_owned()))
             .await
             .into_response();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "static_handler should return HTTP 200 OK for embedded static asset 'index.js'"
+        );
         assert!(
             response.headers()[header::CONTENT_TYPE]
                 .to_str()
                 .expect("content type")
-                .contains("javascript")
+                .contains("javascript"),
+            "Content-Type header for index.js should indicate javascript"
         );
         let body = to_bytes(response.into_body(), 1024 * 1024)
             .await
             .expect("asset body");
-        assert!(String::from_utf8_lossy(&body).contains("IntersectionObserver"));
+        assert!(
+            String::from_utf8_lossy(&body).contains("IntersectionObserver"),
+            "index.js response payload should contain client script code ('IntersectionObserver')"
+        );
     }
 
     #[tokio::test]
@@ -52,6 +60,10 @@ mod tests {
         let response = static_handler(Path("missing.js".to_owned()))
             .await
             .into_response();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response.status(),
+            StatusCode::NOT_FOUND,
+            "static_handler should return HTTP 404 NOT_FOUND for non-existent asset"
+        );
     }
 }

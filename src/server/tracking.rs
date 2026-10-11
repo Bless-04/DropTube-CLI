@@ -218,19 +218,44 @@ mod tests {
         let first_connection = ConnectionLease::new(ip_address, Arc::clone(&state));
         let second_connection = ConnectionLease::new(ip_address, Arc::clone(&state));
         let active = update_state(&state, |server_state| server_state.clients());
-        assert_eq!(active.len(), 1);
-        assert_eq!(active[0].active_connections(), 2);
-        assert!(active[0].is_active());
+        assert_eq!(
+            active.len(),
+            1,
+            "ServerState should track exactly one unique client IP"
+        );
+        assert_eq!(
+            active[0].active_connections(),
+            2,
+            "Client should have 2 active connections"
+        );
+        assert!(
+            active[0].is_active(),
+            "Client should be considered active while open connections exist"
+        );
 
         drop(first_connection);
         let one_remaining = update_state(&state, |server_state| server_state.clients());
-        assert_eq!(one_remaining[0].active_connections(), 1);
-        assert!(one_remaining[0].is_active());
+        assert_eq!(
+            one_remaining[0].active_connections(),
+            1,
+            "Client should have 1 active connection remaining after first lease is dropped"
+        );
+        assert!(
+            one_remaining[0].is_active(),
+            "Client should remain active while one connection remains open"
+        );
 
         drop(second_connection);
         let disconnected = update_state(&state, |server_state| server_state.clients());
-        assert_eq!(disconnected[0].active_connections(), 0);
-        assert!(!disconnected[0].is_active());
+        assert_eq!(
+            disconnected[0].active_connections(),
+            0,
+            "Client should have 0 active connections after dropping all leases"
+        );
+        assert!(
+            !disconnected[0].is_active(),
+            "Client should be marked inactive once active connections drop to zero"
+        );
     }
 
     #[test]
@@ -242,7 +267,15 @@ mod tests {
         state.connect(earlier);
 
         let clients = state.clients();
-        assert_eq!(clients[0].ip_address(), earlier);
-        assert_eq!(clients[1].ip_address(), later);
+        assert_eq!(
+            clients[0].ip_address(),
+            earlier,
+            "Client list should be sorted by IP address ascending (earlier IP first)"
+        );
+        assert_eq!(
+            clients[1].ip_address(),
+            later,
+            "Client list should place later IP second in ascending order"
+        );
     }
 }

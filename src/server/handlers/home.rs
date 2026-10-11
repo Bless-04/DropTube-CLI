@@ -266,12 +266,22 @@ mod tests {
     fn search_matches_all_terms_across_title_filename_folder_and_tags() {
         let videos = vec![video("Rust Basics"), video("Cooking")];
         let template = HomeTemplate::new(&videos, query("  RUST   courses technology mp4  "), 8081);
-        assert_eq!(template.total_count, 1);
-        assert_eq!(template.cards[0].title, "Rust Basics");
-        assert_eq!(template.search_query, "RUST   courses technology mp4");
+        assert_eq!(
+            template.total_count, 1,
+            "Search matching all terms should yield exactly 1 result"
+        );
+        assert_eq!(
+            template.cards[0].title, "Rust Basics",
+            "Matching result card should be 'Rust Basics'"
+        );
+        assert_eq!(
+            template.search_query, "RUST   courses technology mp4",
+            "Template should retain the normalized trimmed search query"
+        );
         assert_eq!(
             HomeTemplate::new(&videos, query("Rust cooking"), 8081).total_count,
-            0
+            0,
+            "Search terms requiring both 'Rust' and 'cooking' should match no videos"
         );
     }
 
@@ -283,13 +293,25 @@ mod tests {
         search.page = Some(u32::MAX);
         search.tag = Some("TECH".to_owned());
         let template = HomeTemplate::new(&videos, search, 8081);
-        assert_eq!(template.current_page, 1);
-        assert_eq!(template.total_count, 1);
+        assert_eq!(
+            template.current_page, 1,
+            "Excessive page numbers should be clamped to maximum available page (page 1)"
+        );
+        assert_eq!(
+            template.total_count, 1,
+            "Combined query and tag filter should count only matching items"
+        );
         let mut search = query("video");
         search.page = Some(2);
         let template = HomeTemplate::new(&videos, search, 8081);
-        assert_eq!(template.cards.len(), 6);
-        assert!(template.previous_url.contains("search=video"));
+        assert_eq!(
+            template.cards.len(), 6,
+            "Second page of 30 items with PAGE_SIZE 24 should contain remaining 6 cards"
+        );
+        assert!(
+            template.previous_url.contains("search=video"),
+            "Pagination previous URL should preserve the active search query parameter"
+        );
     }
 
     #[test]
@@ -298,11 +320,26 @@ mod tests {
         let html = HomeTemplate::new(&videos, query(""), 8081)
             .render()
             .expect("render feed");
-        assert!(!html.contains("<video"));
-        assert!(!html.contains("<script>alert(1)</script>"));
-        assert!(html.contains("loading=\"lazy\""));
-        assert!(html.contains("data-src=\"/video/courses/a%20%26%20b%2Ejpg\""));
-        assert!(html.contains("method=\"get\""));
+        assert!(
+            !html.contains("<video"),
+            "Feed page should only render preview cards, never embedded <video> players"
+        );
+        assert!(
+            !html.contains("<script>alert(1)</script>"),
+            "Title metadata containing script tags must be escaped against XSS"
+        );
+        assert!(
+            html.contains("loading=\"lazy\""),
+            "Feed preview thumbnails must use loading='lazy'"
+        );
+        assert!(
+            html.contains("data-src=\"/video/courses/a%20%26%20b%2Ejpg\""),
+            "Thumbnail source paths in data-src should be URL-encoded"
+        );
+        assert!(
+            html.contains("method=\"get\""),
+            "Search filter form must use HTTP GET method"
+        );
     }
 
     #[test]
@@ -315,12 +352,22 @@ mod tests {
         assert!(
             template.cards[0]
                 .watch_url
-                .contains("search=technology&tag=Technology")
+                .contains("search=technology&tag=Technology"),
+            "Card watch URL should preserve existing search and tag query parameters"
         );
         let html = template.render().expect("render watch page");
-        assert_eq!(html.matches("<video").count(), 1);
-        assert!(html.contains("preload=\"metadata\""));
-        assert!(html.contains("src=\"/video/courses/Second%2Emp4\""));
+        assert_eq!(
+            html.matches("<video").count(), 1,
+            "Watch page should embed exactly one <video> player element for selected video"
+        );
+        assert!(
+            html.contains("preload=\"metadata\""),
+            "Embedded video player must set preload='metadata'"
+        );
+        assert!(
+            html.contains("src=\"/video/courses/Second%2Emp4\""),
+            "Video stream source URL must be properly URL-encoded"
+        );
     }
 
     #[test]
@@ -328,11 +375,20 @@ mod tests {
         let empty = HomeTemplate::new(&[], query(""), 8081)
             .render()
             .expect("empty feed");
-        assert!(empty.contains("Your library is ready for videos"));
+        assert!(
+            empty.contains("Your library is ready for videos"),
+            "Empty library state should prompt user to add videos"
+        );
         let filtered = HomeTemplate::new(&[video("First")], query("missing"), 8081)
             .render()
             .expect("empty search");
-        assert!(filtered.contains("No videos found"));
-        assert!(filtered.contains("Clear filters"));
+        assert!(
+            filtered.contains("No videos found"),
+            "Filtered search yielding 0 results should state 'No videos found'"
+        );
+        assert!(
+            filtered.contains("Clear filters"),
+            "Filtered search yielding 0 results should offer 'Clear filters' link"
+        );
     }
 }

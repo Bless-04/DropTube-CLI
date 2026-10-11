@@ -101,11 +101,20 @@ async fn server_serves_home_feed_and_video_cards() {
 
     // Refresh index so the video appears
     let (refresh_status, _) = server.request("POST", "/refresh").await;
-    assert_eq!(refresh_status, 200);
+    assert_eq!(
+        refresh_status, 200,
+        "POST /refresh should return 200 OK after scanning newly added video file"
+    );
 
     let (status, body) = server.request("GET", "/").await;
-    assert_eq!(status, 200);
-    assert!(body.contains("action movie"));
+    assert_eq!(
+        status, 200,
+        "GET / (home feed) should return 200 OK when requesting root route"
+    );
+    assert!(
+        body.contains("action movie"),
+        "Home feed HTML body should contain the formatted video card title 'action movie'"
+    );
 }
 
 #[tokio::test]
@@ -114,12 +123,24 @@ async fn server_serves_file_explorer() {
     server.create_file("courses/rust_intro.mp4", b"video content");
 
     let (status, body) = server.request("GET", "/explorer").await;
-    assert_eq!(status, 200);
-    assert!(body.contains("courses"));
+    assert_eq!(
+        status, 200,
+        "GET /explorer should return 200 OK when viewing directory structure"
+    );
+    assert!(
+        body.contains("courses"),
+        "Root explorer HTML should list the discovered subfolder 'courses'"
+    );
 
     let (sub_status, sub_body) = server.request("GET", "/explorer/courses").await;
-    assert_eq!(sub_status, 200);
-    assert!(sub_body.contains("rust_intro.mp4"));
+    assert_eq!(
+        sub_status, 200,
+        "GET /explorer/courses should return 200 OK when viewing folder contents"
+    );
+    assert!(
+        sub_body.contains("rust_intro.mp4"),
+        "Explorer subfolder HTML should list the video file 'rust_intro.mp4'"
+    );
 }
 
 #[tokio::test]
@@ -128,8 +149,14 @@ async fn server_serves_raw_video_via_stream_service() {
     server.create_file("stream_test.mp4", b"binary-video-payload-12345");
 
     let (status, body) = server.request("GET", "/video/stream_test.mp4").await;
-    assert_eq!(status, 200);
-    assert!(body.contains("binary-video-payload-12345"));
+    assert_eq!(
+        status, 200,
+        "GET /video/<file> should return 200 OK when streaming raw video file"
+    );
+    assert!(
+        body.contains("binary-video-payload-12345"),
+        "Video streaming endpoint should deliver the raw file binary payload"
+    );
 }
 
 #[tokio::test]
@@ -137,8 +164,14 @@ async fn server_serves_embedded_static_assets() {
     let server = ServerFixture::start().await;
 
     let (status, body) = server.request("GET", "/public/index.css").await;
-    assert_eq!(status, 200);
-    assert!(body.contains("Content-Type:") || body.contains("content-type:"));
+    assert_eq!(
+        status, 200,
+        "GET /public/index.css should return 200 OK for embedded static stylesheet asset"
+    );
+    assert!(
+        body.contains("Content-Type:") || body.contains("content-type:"),
+        "Static asset HTTP response headers should contain Content-Type header"
+    );
 }
 
 #[tokio::test]
@@ -146,8 +179,14 @@ async fn server_handles_missing_files_with_not_found() {
     let server = ServerFixture::start().await;
 
     let (status, _) = server.request("GET", "/video/non_existent_file.mp4").await;
-    assert_eq!(status, 404);
+    assert_eq!(
+        status, 404,
+        "GET /video/<missing_file> should return 404 Not Found for non-existent video"
+    );
 
     let (exp_status, _) = server.request("GET", "/explorer/missing_folder").await;
-    assert_eq!(exp_status, 404);
+    assert_eq!(
+        exp_status, 404,
+        "GET /explorer/<missing_folder> should return 404 Not Found for non-existent directory"
+    );
 }

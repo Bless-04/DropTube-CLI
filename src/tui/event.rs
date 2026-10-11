@@ -73,15 +73,28 @@ mod tests {
 
     #[test]
     fn quit_keys_only_match_key_presses() {
-        assert_eq!(action_for(key(KeyCode::Char('q'))), InputAction::Quit);
-        assert_eq!(action_for(key(KeyCode::Char('Q'))), InputAction::Quit);
-        assert_eq!(action_for(key(KeyCode::Esc)), InputAction::Quit);
+        assert_eq!(
+            action_for(key(KeyCode::Char('q'))),
+            InputAction::Quit,
+            "Pressing 'q' should trigger InputAction::Quit"
+        );
+        assert_eq!(
+            action_for(key(KeyCode::Char('Q'))),
+            InputAction::Quit,
+            "Pressing 'Q' should trigger InputAction::Quit"
+        );
+        assert_eq!(
+            action_for(key(KeyCode::Esc)),
+            InputAction::Quit,
+            "Pressing Escape should trigger InputAction::Quit"
+        );
         assert_eq!(
             action_for(Event::Key(KeyEvent::new(
                 KeyCode::Char('c'),
                 KeyModifiers::CONTROL
             ))),
-            InputAction::Quit
+            InputAction::Quit,
+            "Pressing Ctrl+C should trigger InputAction::Quit"
         );
         assert_eq!(
             action_for(Event::Key(KeyEvent::new_with_kind(
@@ -89,33 +102,46 @@ mod tests {
                 KeyModifiers::NONE,
                 KeyEventKind::Release
             ))),
-            InputAction::Continue
+            InputAction::Continue,
+            "Key release events should be ignored (InputAction::Continue)"
         );
     }
 
     #[test]
     fn navigation_keys_map_to_page_actions() {
         for code in [KeyCode::Up, KeyCode::Left, KeyCode::BackTab] {
-            assert_eq!(action_for(key(code)), InputAction::PreviousPage);
+            assert_eq!(
+                action_for(key(code)),
+                InputAction::PreviousPage,
+                "Key code {code:?} should trigger InputAction::PreviousPage"
+            );
         }
         for code in [KeyCode::Down, KeyCode::Right, KeyCode::Tab] {
-            assert_eq!(action_for(key(code)), InputAction::NextPage);
+            assert_eq!(
+                action_for(key(code)),
+                InputAction::NextPage,
+                "Key code {code:?} should trigger InputAction::NextPage"
+            );
         }
         assert_eq!(
             action_for(key(KeyCode::Char('1'))),
-            InputAction::Show(Page::Dashboard)
+            InputAction::Show(Page::Dashboard),
+            "Pressing '1' should navigate directly to the Dashboard page"
         );
         assert_eq!(
             action_for(key(KeyCode::Char('l'))),
-            InputAction::Show(Page::Logs)
+            InputAction::Show(Page::Logs),
+            "Pressing 'l' should navigate directly to the Logs page"
         );
         assert_eq!(
             action_for(key(KeyCode::Char('r'))),
-            InputAction::Show(Page::QrCode)
+            InputAction::Show(Page::QrCode),
+            "Pressing 'r' should navigate directly to the QR Code page"
         );
         assert_eq!(
             action_for(key(KeyCode::Char('D'))),
-            InputAction::Show(Page::Dashboard)
+            InputAction::Show(Page::Dashboard),
+            "Pressing 'D' should navigate directly to the Dashboard page"
         );
     }
 
@@ -123,14 +149,24 @@ mod tests {
     fn scrolling_keys_map_to_scroll_actions() {
         assert_eq!(
             action_for(key(KeyCode::PageUp)),
-            InputAction::ScrollBackward
+            InputAction::ScrollBackward,
+            "PageUp should scroll backward"
         );
         assert_eq!(
             action_for(key(KeyCode::PageDown)),
-            InputAction::ScrollForward
+            InputAction::ScrollForward,
+            "PageDown should scroll forward"
         );
-        assert_eq!(action_for(key(KeyCode::Home)), InputAction::ScrollToStart);
-        assert_eq!(action_for(key(KeyCode::End)), InputAction::ScrollToEnd);
+        assert_eq!(
+            action_for(key(KeyCode::Home)),
+            InputAction::ScrollToStart,
+            "Home key should scroll to start of client list"
+        );
+        assert_eq!(
+            action_for(key(KeyCode::End)),
+            InputAction::ScrollToEnd,
+            "End key should scroll to end of client list"
+        );
     }
 
     #[test]
@@ -141,6 +177,10 @@ mod tests {
             row: 3,
             modifiers: KeyModifiers::NONE,
         };
-        assert_eq!(action_for(Event::Mouse(mouse_event)), InputAction::Continue);
+        assert_eq!(
+            action_for(Event::Mouse(mouse_event)),
+            InputAction::Continue,
+            "Mouse movement events should not interrupt or exit the interface"
+        );
     }
 }

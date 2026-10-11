@@ -12,7 +12,6 @@ use local_ip_address::local_ip;
 use log::{Level, error, info, warn};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
@@ -368,7 +367,10 @@ mod tests {
 
         drop(guard);
 
-        assert!(!running.load(Ordering::Acquire));
+        assert!(
+            !running.load(Ordering::Acquire),
+            "ServerRunningGuard must set running flag to false when dropped"
+        );
     }
 
     #[test]
@@ -379,7 +381,10 @@ mod tests {
 
         let canonical = canonicalize_directory(Path::new("."));
 
-        assert_eq!(canonical, current_directory);
+        assert_eq!(
+            canonical, current_directory,
+            "canonicalize_directory on current directory '.' should resolve to canonical current_dir"
+        );
     }
 
     #[test]
@@ -389,7 +394,10 @@ mod tests {
 
         let resolved = canonicalize_directory(&missing);
 
-        assert_eq!(resolved, missing);
+        assert_eq!(
+            resolved, missing,
+            "canonicalize_directory should preserve non-existent path as-is without failing"
+        );
     }
 
     #[tokio::test]
@@ -405,14 +413,23 @@ mod tests {
 
         let thumbnails = initialize_thumbnails(&args).await;
 
-        assert!(thumbnails.is_none());
+        assert!(
+            thumbnails.is_none(),
+            "initialize_thumbnails should return None when thumbnails flag is false, even if ffmpeg_path is set"
+        );
     }
 
     #[tokio::test]
     async fn explicit_port_binding_uses_the_requested_port() {
         let BoundListener { listener, port } = bind_listener(Some(0)).await;
 
-        assert_eq!(port, 0);
-        assert!(listener.local_addr().is_ok());
+        assert_eq!(
+            port, 0,
+            "bind_listener should return the explicit requested port"
+        );
+        assert!(
+            listener.local_addr().is_ok(),
+            "bind_listener should successfully produce a listener bound to a local socket address"
+        );
     }
 }
