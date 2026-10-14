@@ -1,0 +1,131 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-binaries:
+    name: Build binary (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary_name: droptube.exe
+            archive_name: droptube-windows-x86_64.zip
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            binary_name: droptube
+            archive_name: droptube-linux-x86_64.tar.gz
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install musl-tools (Linux)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package Windows archive
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" -DestinationPath "${{ matrix.archive_name }}"
+
+      - name: Package Linux archive
+        if: runner.os == 'Linux'
+        run: |
+          tar -czvf ${{ matrix.archive_name }} -C target/${{ matrix.target }}/release ${{ matrix.binary_name }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive_name }}
+          path: ${{ matrix.archive_name }}
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS.txt
+        working-directory: release-assets
+        run: |
+          sha256sum droptube-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/droptube-windows-x86_64.zip
+            release-assets/droptube-linux-x86_64.tar.gz
+            release-assets/SHA256SUMS.txt
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-winget:
+    name: Publish to WinGet
+    needs: publish-release
+    runs-on: ubuntu-latest
+    env:
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+    steps:
+      - name: Checkout repository
+        if: env.WINGET_TOKEN != ''
+        uses: actions/checkout@v4
+
+      - name: Submit to WinGet Community Repository
+        if: env.WINGET_TOKEN != ''
+        uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: Blessing.DropTube
+          token: ${{ secrets.WINGET_TOKEN }}
+          installers-regex: 'droptube-windows-x86_64\.zip$'
+          max-versions-to-keep: 5
+
+  publish-homebrew:
+    name: Bump Homebrew Formula
+    needs: publish-release
+    runs-on: ubuntu-latest
+    env:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - name: Bump Homebrew Formula
+        if: env.HOMEBREW_TAP_TOKEN != ''
+        uses: mislav/bump-homebrew-formula-action@v3
+        with:
+          formula-name: droptube
+          homebrew-owner: Bless-04
+          homebrew-repo: homebrew-tap
+          download-url: https://github.com/Bless-04/DropTube-CLI/releases/download/${{ github.ref_name }}/droptube-linux-x86_64.tar.gz
+        env:
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
