@@ -110,7 +110,10 @@ mod tests {
         let args_result = CliArgs::try_parse_from([EXECUTABLE, "--open-tui"]);
         assert!(args_result.is_ok(), "Parsing '--open-tui' should succeed");
         if let Ok(args) = args_result {
-            assert!(args.open_tui, "'--open-tui' flag should set open_tui to true");
+            assert!(
+                args.open_tui,
+                "'--open-tui' flag should set open_tui to true"
+            );
         }
 
         let default_result = CliArgs::try_parse_from([EXECUTABLE]);
