@@ -9,13 +9,28 @@
 
 ### Installation
 
+#### Windows (WinGet)
+
+```powershell
+winget install Blessing.DropTube
+```
+
+#### Linux (Homebrew)
+
+```bash
+brew tap Bless-04/tap
+brew install droptube
+```
+
+#### Building from Source
+
 Ensure you have the Rust toolchain installed, clone the repository, and build the release binary:
 
 ```bash
 cargo build --release
 ```
 
-Your optimized standalone executable will be located in `target/release/droptube`.
+The executable will be located in `target/release/droptube` (or `target/release/droptube.exe` on Windows).
 
 ### Usage
 
@@ -140,26 +155,79 @@ release executable works from any working directory without a `public` folder be
 
 ---
 
-## 🏷️ Naming Conventions & Metadata
+## Profiles, ratings, and tags
 
-DropTube extracts optional metadata directly from the filename string.
+Choose a profile from the menu in the header. On your first visit, the chooser suggests **guest**;
+browsing and playback work before selection, while personal editing stays inactive. Enter an existing
+name or a new name, then choose **Switch profile** whenever you want to use another identity.
+Names contain 1–32 ASCII letters or digits, are stored lowercase, and cannot be Windows device names.
+Spaces, punctuation, underscores, hyphens, and non-ASCII characters are rejected.
 
-- **Rating:** Prefix the filename with `[1]` to `[5]` to give it a star rating.
-- **Tags:** Prefix the filename with a comma-separated bracket array like `[action,drama]` to tag it.
-- **Display Name:** Underscores (`_`) and dots (`.`) are automatically replaced with spaces to format the display name
-  beautifully.
-- **Thumbnails:** If an image file (e.g., `.jpg`, `.png`, `.webp`) shares the exact same base name as the video file in
-  the same directory (e.g., `video.mp4` and `video.jpg`), DropTube will automatically pair them and serve the image as
-  the video thumbnail.
+Profiles select shared identities; they do not authenticate users. Anyone choosing the same name
+shares its ratings and tags. **guest** is one shared profile across browsers, and LAN IP addresses are
+not identities. The selection is remembered by a server-set HttpOnly cookie for one year, rather than
+localStorage. Its host-only name is `droptube_profile_<library_id>`, with `Path=/`, `SameSite=Lax`,
+and `Secure` when served over HTTPS. A different browser or hostname/IP may need a fresh selection.
 
-**Example:**
-`[5] [sci-fi,action] interstellar_movie.mkv`
+The library ID is the lowercase 16-digit FNV-1a 64-bit hash of the canonical root's native encoding,
+with a platform discriminator (Unix path bytes or Windows UTF-16 little-endian units), fixed offset
+`0xcbf29ce484222325`, and multiplier `0x100000001b3`. It is independent of the port and stable across
+restarts. Separate library roots have separate selections; tabs and ports serving the same library on
+the same host share the selection.
 
-- **Rating:** ★★★★★
-- **Tags:** Sci-Fi, Action
-- **Display Name:** "interstellar movie"
+On a watch page, **Your rating** saves one integer rating from 1 to 5 for that profile. Cards and the
+watch view separately show the community average and contribution count. For example, `p1=4` and
+`p2=5` produce **4.5/5 · 2 ratings**. Changing p1 to 2 gives **3.5/5 · 2 ratings**: rerating replaces
+one contribution, and repeating a rating never adds a vote. Unrated profiles do not count. Videos with
+no contributions show **Unrated**; unreadable community metadata shows **Rating unavailable**.
 
----
+Use **Add tag** to create a label or reuse a suggestion. Tags accumulate; remove buttons delete only
+the selected label. Labels are trimmed, lowercased, and limited to 64 Unicode code points, with empty
+labels and control characters rejected. Tags, suggestions, tag-aware search, and filters belong to
+the active profile; community ratings are shared. Switching profiles with JavaScript keeps the current
+player mounted. When another tab switches your profile, pending edits are discarded and you are asked
+to retry against the refreshed profile. Without JavaScript, profile selection and browsing/filtering
+work through normal forms; personal editing requires JavaScript.
+
+### Storage and API usage
+
+Saved data lives at `<served_library_root>/.droptube/profiles/<profile>/metadata.json`, including for
+videos in subfolders. Choosing a profile or reading missing metadata creates no files. The first saved
+edit creates an indented JSON file. Each video's ID is its exact library-relative path, with forward
+slashes and its extension. Profile files and temporary save files cannot be downloaded through media
+or explorer routes. Existing thumbnail caches keep their original layout.
+
+Start DropTube with `droptube --port 18081 --depth 255 /path/to/library`, where the library contains
+`movies/movie.mp4`. These commands were verified against an indexed video at that path; the save
+assigns p1's personal rating and returns its complete metadata:
+
+```bash
+curl -X POST http://localhost:18081/api/user/rating \
+  -H "Content-Type: application/json" \
+  -H "X-Droptube-Profile: p1" \
+  --data '{"video_id":"movies/movie.mp4","rating":4}'
+
+curl http://localhost:18081/api/user/metadata -H "X-Droptube-Profile: p1"
+curl http://localhost:18081/api/videos/ratings
+```
+
+The save creates `.droptube/profiles/p1/metadata.json` under that library root. Unknown indexed IDs
+return 404; invalid names such as `X-Droptube-Profile: ../../etc` return 400 without creating profile
+files. Explicit-header clients may omit `expected_profile`; browser edits use the cookie and must
+include the profile whose metadata was displayed, receiving 409 if the selection has changed.
+The public aggregate endpoint exposes averages/counts only, without profile names or personal tags.
+
+Each profile's updates are serialized and committed using a synced same-directory temporary file
+followed by replacement, preserving prior committed data on failed writes. Corrupt data is reported
+and preserved rather than overwritten. This guarantees complete committed JSON, not unconditional
+power-loss durability. Multiple server processes concurrently writing the same library are unsupported.
+Use a trusted local library: containment checks reject existing links, but cannot protect against a
+hostile local process racing filesystem replacements. Moving or renaming a video can leave orphaned
+metadata; automatic remapping and importing old filename metadata are unsupported.
+
+Filename prefixes such as `[5] [action,drama]` are ordinary title text and never create ratings or tags.
+Underscores and dots still become spaces in display titles. Existing same-stem image thumbnails and
+FFmpeg-generated thumbnails continue to work. No media files are renamed or rewritten.
 
 ---
 
@@ -180,9 +248,14 @@ DropTube extracts optional metadata directly from the filename string.
 ```bash
 cargo build
 cargo build --release
+cargo check
 cargo test --all-features --all-targets
 cargo clippy --all-targets --all-features -- -D warnings
 cargo fmt -- --check
+cargo audit
+cargo deny check
+cargo +nightly udeps --all-targets
+cargo semver-checks --baseline-rev v0.3.0
 node --check public/index.js
 node --test
 ```
