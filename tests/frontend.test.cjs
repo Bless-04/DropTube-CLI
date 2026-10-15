@@ -24,7 +24,7 @@ function setup({ observerAvailable = true, refresh = null } = {}) {
     let reloaded = false;
     window.location = { reload() { reloaded = true; } };
     const controls = refresh ? {
-        'refresh-button': { addEventListener(_, handler) { this.click = handler; }, setAttribute() {}, removeAttribute() {} },
+        'refresh-button': { dataset: {}, addEventListener(_, handler) { this.click = handler; }, setAttribute() {}, removeAttribute() {} },
         'refresh-icon': { classList: { add() {}, remove() {} } },
         'status-message': {},
     } : {};
