@@ -6,6 +6,7 @@ subgraph group_startup["Startup and state"]
   node_application["Application lifecycle<br/>[application.rs]"]
   node_cli["CLI options<br/>[cli.rs]"]
   node_appstate["Library state<br/>[state.rs]"]
+  node_profiles["Profile contributions and shared metadata<br/>[profiles.rs]"]
 end
 
 subgraph group_media["Media indexing"]
@@ -56,6 +57,8 @@ node_router -->|"dispatches requests"| node_explorer
 node_router -->|"dispatches requests"| node_assets
 node_router -->|"routes video paths"| node_videostream
 node_home -->|"reads library state"| node_appstate
+node_appstate -->|"shares profile manager"| node_profiles
+node_home -->|"reads shared tags and ratings"| node_profiles
 node_home -->|"renders page"| node_templates
 node_refresh -->|"refreshes index"| node_appstate
 node_explorer -->|"reads directories"| node_mediafiles
@@ -67,10 +70,12 @@ node_networkclients -->|"opens connections"| node_clienttracking
 node_application -->|"starts tracked server"| node_clienttracking
 node_application -.->|"starts dashboard"| node_tui
 node_tui -->|"displays clients"| node_clienttracking
+node_tui -->|"reads profile summaries in background"| node_profiles
 
 click node_application "https://github.com/bless-04/droptube-cli/blob/master/src/application.rs"
 click node_cli "https://github.com/bless-04/droptube-cli/blob/master/src/models/cli.rs"
 click node_appstate "https://github.com/bless-04/droptube-cli/blob/master/src/models/state.rs"
+click node_profiles "https://github.com/bless-04/droptube-cli/blob/master/src/profiles.rs"
 click node_scanner "https://github.com/bless-04/droptube-cli/blob/master/src/utils/scanner.rs"
 click node_videomodel "https://github.com/bless-04/droptube-cli/blob/master/src/models/video.rs"
 click node_thumbnails "https://github.com/bless-04/droptube-cli/blob/master/src/utils/thumbnails.rs"
@@ -92,7 +97,7 @@ classDef toneMint fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#14532d
 classDef toneRose fill:#ffe4e6,stroke:#e11d48,stroke-width:1.5px,color:#881337
 classDef toneIndigo fill:#e0e7ff,stroke:#4f46e5,stroke-width:1.5px,color:#312e81
 classDef toneTeal fill:#ccfbf1,stroke:#0f766e,stroke-width:1.5px,color:#134e4a
-class node_application,node_cli,node_appstate,node_browser,node_networkclients toneBlue
+class node_application,node_cli,node_appstate,node_profiles,node_browser,node_networkclients toneBlue
 class node_scanner,node_videomodel,node_thumbnails,node_mediafiles,node_thumbnailcache toneAmber
 class node_home,node_refresh,node_explorer,node_assets,node_templates,node_frontend toneMint
 class node_router,node_videostream,node_clienttracking toneRose
