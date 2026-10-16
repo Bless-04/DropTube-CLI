@@ -1,0 +1,43 @@
+# Approved licenses used by the existing Cargo.lock dependency graph.
+# A dependency with a different license requires an explicit policy review.
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+
+[advisories]
+# Keep the default RustSec database and deny known vulnerabilities.
+
+[bans]
+multiple-versions = "deny"
+# These exact transitive versions already coexist in the locked graph.
+# Retire each exception when its dependency no longer requires it.
+skip = [
+    # qr2term 0.3.3 needs crossterm 0.28; the application uses 0.29.
+    { name = "crossterm", version = "=0.28.1" },
+    # neli's derive_builder uses darling 0.20; instability uses 0.24.
+    { name = "darling", version = "=0.20.11" },
+    { name = "darling_core", version = "=0.20.11" },
+    { name = "darling_macro", version = "=0.20.11" },
+    # kasuari uses hashbrown 0.16; ratatui and lru use 0.17.
+    { name = "hashbrown", version = "=0.16.1" },
+    # crossterm 0.28's rustix needs older platform bindings.
+    { name = "linux-raw-sys", version = "=0.4.15" },
+    { name = "rustix", version = "=0.38.44" },
+    { name = "windows-sys", version = "=0.59.0" },
+    # Existing proc macros still need syn 2; Askama/Clap use syn 3.
+    { name = "syn", version = "=2.0.119" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
