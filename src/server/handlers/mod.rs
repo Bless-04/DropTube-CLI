@@ -1,6 +1,7 @@
 pub(crate) mod assets;
 pub mod explorer;
 pub mod home;
+pub(crate) mod profiles;
 pub mod scan;
 
 use axum::{
