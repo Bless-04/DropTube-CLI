@@ -26,7 +26,7 @@ impl Library {
         Self(path.canonicalize().expect("canonical test directory"))
     }
 
-    fn state(&self, thumbnails: Option<ThumbnailGenerator>) -> AppState {
+    async fn state(&self, thumbnails: Option<ThumbnailGenerator>) -> AppState {
         AppState {
             movie_directory: self.0.clone(),
             port: 0,
@@ -34,6 +34,11 @@ impl Library {
             index_cache: Arc::new(RwLock::new(Vec::new())),
             thumbnails,
             scan_lock: Arc::new(Mutex::new(())),
+            profiles: Arc::new(
+                droptube::profiles::ProfileManager::new(&self.0)
+                    .await
+                    .expect("profile manager"),
+            ),
         }
     }
 }
@@ -114,7 +119,7 @@ async fn generation_is_disabled_by_default_and_sidecars_are_preserved() {
     let library = Library::new();
     fs::write(library.0.join("first.mp4"), b"video").expect("write video");
     fs::write(library.0.join("first.jpg"), b"custom image").expect("write sidecar");
-    let state = library.state(None);
+    let state = library.state(None).await;
     state.refresh_index().await.expect("scan");
     let index = state.index_cache.read().await;
     assert_eq!(
@@ -141,7 +146,7 @@ async fn generation_is_disabled_by_default_and_sidecars_are_preserved() {
 #[tokio::test]
 async fn refresh_waits_for_the_scan_lock_and_publishes_new_files() {
     let library = Library::new();
-    let state = library.state(None);
+    let state = library.state(None).await;
     let guard = state.scan_lock.lock().await;
     let refresh = state.refresh_index();
     tokio::pin!(refresh);
@@ -340,7 +345,7 @@ async fn real_ffmpeg_generates_reuses_invalidates_and_handles_corrupt_videos() {
     );
     let sidecar = source.with_extension("jpg");
     fs::write(&sidecar, b"custom thumbnail").expect("write sidecar");
-    let state = library.state(Some(generator));
+    let state = library.state(Some(generator)).await;
     state
         .refresh_index()
         .await
