@@ -46,108 +46,6 @@ impl VideoFormat {
     }
 }
 
-/// Represents the rating of a video (Unrated or 1-5 stars)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Rating {
-    /// No rating was specified.
-    Unrated,
-    /// One-star rating.
-    OneStar,
-    /// Two-star rating.
-    TwoStars,
-    /// Three-star rating.
-    ThreeStars,
-    /// Four-star rating.
-    FourStars,
-    /// Five-star rating.
-    FiveStars,
-}
-
-impl Rating {
-    /// Converts a `u8` in the range 1–5 to the corresponding `Rating` variant.
-    /// Any value outside that range maps to `Rating::Unrated`.
-    pub fn from_u8(val: u8) -> Self {
-        match val {
-            1 => Self::OneStar,
-            2 => Self::TwoStars,
-            3 => Self::ThreeStars,
-            4 => Self::FourStars,
-            5 => Self::FiveStars,
-            _ => Self::Unrated,
-        }
-    }
-
-    /// Returns a star-glyph string representing this rating.
-    pub fn as_stars(&self) -> &'static str {
-        match self {
-            Self::Unrated => "☆☆☆☆☆",
-            Self::OneStar => "★☆☆☆☆",
-            Self::TwoStars => "★★☆☆☆",
-            Self::ThreeStars => "★★★☆☆",
-            Self::FourStars => "★★★★☆",
-            Self::FiveStars => "★★★★★",
-        }
-    }
-
-    /// Returns `true` if this is any rating other than `Unrated`.
-    pub fn is_rated(&self) -> bool {
-        !matches!(self, Self::Unrated)
-    }
-}
-
-/// Represents categories/topic tags for video grouping
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Tag {
-    /// Action videos.
-    Action,
-    /// Comedy videos.
-    Comedy,
-    /// Drama videos.
-    Drama,
-    /// Science fiction videos.
-    SciFi,
-    /// Documentary videos.
-    Documentary,
-    /// Technology videos.
-    Technology,
-    /// Rust programming videos.
-    Rust,
-    /// A custom filename tag.
-    Other(String),
-}
-
-impl Tag {
-    /// Parses a tag from a string slice, case-insensitively.
-    ///
-    /// This is an infallible conversion; unrecognised strings become [`Tag::Other`].
-    pub fn parse(s: &str) -> Self {
-        match s.to_lowercase().trim() {
-            "action" => Self::Action,
-            "comedy" => Self::Comedy,
-            "drama" => Self::Drama,
-            "sci-fi" | "scifi" => Self::SciFi,
-            "documentary" => Self::Documentary,
-            "technology" | "tech" => Self::Technology,
-            "rust" => Self::Rust,
-            other => Self::Other(other.to_string()),
-        }
-    }
-
-    /// Returns the canonical display string for this tag.
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::Action => "Action",
-            Self::Comedy => "Comedy",
-            Self::Drama => "Drama",
-            Self::SciFi => "Sci-Fi",
-            Self::Documentary => "Documentary",
-            Self::Technology => "Technology",
-            Self::Rust => "Rust",
-            Self::Other(s) => s,
-        }
-    }
-}
-
 /// A video file discovered during directory scanning.
 #[derive(Debug, Clone)]
 pub struct VideoFile {
@@ -161,10 +59,6 @@ pub struct VideoFile {
     pub unix_timestamp: u64,
     /// Container format of the video.
     pub format: VideoFormat,
-    /// Star rating parsed from the filename prefix.
-    pub rating: Rating,
-    /// Topic tags parsed from the filename.
-    pub tags: Vec<Tag>,
     /// Relative path to a sidecar thumbnail image, if found.
     pub thumbnail_path: Option<String>,
 }

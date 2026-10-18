@@ -58,6 +58,7 @@ fn action_for(event: Event) -> InputAction {
         KeyCode::Char('1' | 'd' | 'D') => InputAction::Show(Page::Dashboard),
         KeyCode::Char('2' | 'l' | 'L') => InputAction::Show(Page::Logs),
         KeyCode::Char('3' | 'r' | 'R') => InputAction::Show(Page::QrCode),
+        KeyCode::Char('4' | 'p' | 'P') => InputAction::Show(Page::Profiles),
         _ => InputAction::Continue,
     }
 }
@@ -143,6 +144,9 @@ mod tests {
             InputAction::Show(Page::Dashboard),
             "Pressing 'D' should navigate directly to the Dashboard page"
         );
+        for code in [KeyCode::Char('4'), KeyCode::Char('p'), KeyCode::Char('P')] {
+            assert_eq!(action_for(key(code)), InputAction::Show(Page::Profiles));
+        }
     }
 
     #[test]

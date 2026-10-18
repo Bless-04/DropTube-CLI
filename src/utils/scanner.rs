@@ -1,62 +1,34 @@
 use crate::config::constants::DROPTUBE_DIRECTORY;
-use crate::models::video::{Rating, Tag, VideoFile, VideoFormat};
+use crate::models::video::{VideoFile, VideoFormat};
 use log::warn;
 use std::fs;
 use std::path::{Path as StdPath, PathBuf};
 use std::time::SystemTime;
 
-/// Metadata parsed from a video filename (title, rating, tags).
+/// Display information derived from a video filename, without personal metadata.
 pub struct ParsedVideoInfo {
     /// Human-readable display name, with underscores/dots replaced by spaces.
     pub display_name: String,
-    /// Star rating encoded in the filename prefix, e.g. `[4]`.
-    pub rating: Rating,
-    /// Topic tags encoded in the filename, e.g. `[rust,tech]`.
-    pub tags: Vec<Tag>,
 }
 
-/// Parses display name, rating, and tags from a video file path.
+/// Formats a filename's stem for display, keeping bracketed prefixes as title text.
 ///
-/// The convention (both fields are optional and order-sensitive):
-/// 1. `[<1-5>] rest of name` — rating prefix
-/// 2. `[tag1,tag2] rest of name` — tags prefix
+/// Underscores and dots are replaced with spaces. Ratings and tags are managed
+/// exclusively through profiles and are never interpreted from a filename.
 ///
-/// Any underscores or dots in the final title are replaced with spaces.
+/// ```
+/// use droptube::utils::scanner::parse_video_info;
+/// use std::path::Path;
+/// assert_eq!(parse_video_info(Path::new("[5] Movie_Name.mp4")).display_name, "[5] Movie Name");
+/// ```
 pub fn parse_video_info(path: &StdPath) -> ParsedVideoInfo {
     let stem = path
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "Unknown Video".to_string());
 
-    let mut title = stem;
-    let mut rating = Rating::Unrated;
-    let mut tags: Vec<Tag> = Vec::new();
-
-    // Extract rating prefix: [<1-5>]
-    if title.starts_with('[')
-        && let Some(end_idx) = title.find(']')
-    {
-        let rating_val = title[1..end_idx].trim();
-        if let Ok(r_num) = rating_val.parse::<u8>() {
-            rating = Rating::from_u8(r_num);
-            title = title[end_idx + 1..].trim().to_string();
-        }
-    }
-
-    // Extract tags prefix: [tag1,tag2,...]
-    if title.starts_with('[')
-        && let Some(end_idx) = title.find(']')
-    {
-        let tags_val = &title[1..end_idx];
-        tags = tags_val.split(',').map(Tag::parse).collect();
-        title = title[end_idx + 1..].trim().to_string();
-    }
-
-    let display_name = title.replace(['_', '.'], " ");
     ParsedVideoInfo {
-        display_name,
-        rating,
-        tags,
+        display_name: stem.replace(['_', '.'], " "),
     }
 }
 
@@ -118,11 +90,21 @@ pub fn scan_directory(params: &mut ScanDirectoryParams) {
         }
     };
 
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                tracing::warn!(error = %error, "Could not read a library directory entry");
+                continue;
+            }
+        };
         let e_path = entry.path();
 
         // Skip cache and links: linked directories can loop or leave the library.
-        if entry.file_name().eq(DROPTUBE_DIRECTORY)
+        if entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| name.eq_ignore_ascii_case(DROPTUBE_DIRECTORY))
             || entry.file_type().is_ok_and(|kind| kind.is_symlink())
         {
             continue;
@@ -193,8 +175,6 @@ pub fn scan_directory(params: &mut ScanDirectoryParams) {
                         file_size_mb,
                         unix_timestamp,
                         format,
-                        rating: video_info.rating,
-                        tags: video_info.tags,
                         thumbnail_path,
                     });
                 }
@@ -214,50 +194,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_video_info_plain_name() {
-        let path = StdPath::new("my_cool_video.mp4");
-        let info = parse_video_info(path);
-        assert_eq!(
-            info.display_name, "my cool video",
-            "Display name should replace underscores with spaces"
-        );
-        assert_eq!(
-            info.rating,
-            Rating::Unrated,
-            "Video without rating tag should parse as Rating::Unrated"
-        );
-        assert!(
-            info.tags.is_empty(),
-            "Video without bracketed tags should have empty tags set"
-        );
+    fn formats_names_without_interpreting_bracketed_metadata() {
+        for (filename, title) in [
+            ("my_cool_video.mp4", "my cool video"),
+            ("[4] Awesome_Movie.mkv", "[4] Awesome Movie"),
+            ("[rust,tech] My_Talk.mp4", "[rust,tech] My Talk"),
+            (
+                "[5] [action,drama] Movie.2024.mp4",
+                "[5] [action,drama] Movie 2024",
+            ),
+            ("[invalid] incomplete_[.mp4", "[invalid] incomplete ["),
+            ("Film_映画.mp4", "Film 映画"),
+        ] {
+            assert_eq!(parse_video_info(StdPath::new(filename)).display_name, title);
+        }
     }
 
     #[test]
-    fn parse_video_info_with_rating() {
-        let path = StdPath::new("[4] Awesome_Movie.mkv");
-        let info = parse_video_info(path);
+    fn path_without_a_stem_uses_an_explicit_unknown_title() {
         assert_eq!(
-            info.rating,
-            Rating::FourStars,
-            "Bracketed [4] prefix should parse to Rating::FourStars"
-        );
-        assert_eq!(
-            info.display_name, "Awesome Movie",
-            "Display name should strip bracketed rating and format name with spaces"
-        );
-    }
-
-    #[test]
-    fn parse_video_info_with_tags() {
-        let path = StdPath::new("[rust,tech] My_Talk.mp4");
-        let info = parse_video_info(path);
-        assert!(
-            info.tags.contains(&Tag::Rust),
-            "Bracketed tag [rust,tech] should include Tag::Rust"
-        );
-        assert!(
-            info.tags.contains(&Tag::Technology),
-            "Bracketed tag [rust,tech] should include Tag::Technology"
+            parse_video_info(StdPath::new("/")).display_name,
+            "Unknown Video"
         );
     }
 
@@ -390,7 +347,8 @@ mod tests {
         let mut p0 = ScanDirectoryParams::new(fixture.0.clone(), 0);
         scan_directory(&mut p0);
         assert_eq!(
-            p0.videos.len(), 1,
+            p0.videos.len(),
+            1,
             "Depth 0 scan should only collect root-level videos"
         );
         assert_eq!(
@@ -402,7 +360,8 @@ mod tests {
         let mut p1 = ScanDirectoryParams::new(fixture.0.clone(), 1);
         scan_directory(&mut p1);
         assert_eq!(
-            p1.videos.len(), 2,
+            p1.videos.len(),
+            2,
             "Depth 1 scan should collect root and level 1 videos"
         );
         assert!(
@@ -418,7 +377,8 @@ mod tests {
         let mut p2 = ScanDirectoryParams::new(fixture.0.clone(), 2);
         scan_directory(&mut p2);
         assert_eq!(
-            p2.videos.len(), 3,
+            p2.videos.len(),
+            3,
             "Depth 2 scan should collect videos down to level 2"
         );
 
@@ -426,7 +386,8 @@ mod tests {
         let mut p_all = ScanDirectoryParams::new(fixture.0.clone(), 255);
         scan_directory(&mut p_all);
         assert_eq!(
-            p_all.videos.len(), 4,
+            p_all.videos.len(),
+            4,
             "Unlimited depth scan should collect all 4 nested videos"
         );
     }
@@ -445,24 +406,35 @@ mod tests {
         let mut params = ScanDirectoryParams::new(fixture.0.clone(), 0);
         scan_directory(&mut params);
 
-        let v1 = params.videos.iter().find(|v| v.file_name == "film1.mp4").unwrap();
+        let v1 = params
+            .videos
+            .iter()
+            .find(|v| v.file_name == "film1.mp4")
+            .unwrap();
         assert_eq!(
             v1.thumbnail_path.as_deref(),
             Some("film1.jpg"),
             "film1.mp4 should be paired with adjacent sidecar thumbnail film1.jpg"
         );
 
-        let v2 = params.videos.iter().find(|v| v.file_name == "film2.mkv").unwrap();
+        let v2 = params
+            .videos
+            .iter()
+            .find(|v| v.file_name == "film2.mkv")
+            .unwrap();
         assert_eq!(
             v2.thumbnail_path.as_deref(),
             Some("film2.png"),
             "film2.mkv should be paired with adjacent sidecar thumbnail film2.png"
         );
 
-        let v3 = params.videos.iter().find(|v| v.file_name == "film3.webm").unwrap();
+        let v3 = params
+            .videos
+            .iter()
+            .find(|v| v.file_name == "film3.webm")
+            .unwrap();
         assert_eq!(
-            v3.thumbnail_path,
-            None,
+            v3.thumbnail_path, None,
             "film3.webm has no adjacent sidecar and should have None thumbnail_path"
         );
     }
@@ -481,7 +453,8 @@ mod tests {
         scan_directory(&mut params);
 
         assert_eq!(
-            params.videos.len(), 1,
+            params.videos.len(),
+            1,
             "Scanner must ignore videos stored inside the internal .droptube directory"
         );
         assert_eq!(
@@ -491,36 +464,34 @@ mod tests {
     }
 
     #[test]
-    fn scan_directory_parses_metadata_and_forward_slashes() {
+    fn scan_directory_preserves_bracketed_titles_ids_and_thumbnail_matching() {
         let fixture = TestDir::new("scan-meta");
         fixture.create_file(
             "tutorials/rust/[5] [rust,tech] Advanced_Patterns.2024.mp4",
             b"video-bytes",
         );
 
+        fixture.create_file(
+            "tutorials/rust/[5] [rust,tech] Advanced_Patterns.2024.jpg",
+            b"thumbnail",
+        );
+
         let mut params = ScanDirectoryParams::new(fixture.0.clone(), 255);
         scan_directory(&mut params);
 
         assert_eq!(
-            params.videos.len(), 1,
+            params.videos.len(),
+            1,
             "Scanner should find exactly 1 video in subdirectories"
         );
         let video = &params.videos[0];
         assert_eq!(
-            video.display_name, "Advanced Patterns 2024",
-            "Display name should strip bracketed tags and format dots and underscores"
+            video.display_name, "[5] [rust,tech] Advanced Patterns 2024",
+            "Bracketed prefixes remain ordinary text while dots and underscores are formatted"
         );
         assert_eq!(
-            video.rating, Rating::FiveStars,
-            "Rating [5] in filename should parse to Rating::FiveStars"
-        );
-        assert!(
-            video.tags.contains(&Tag::Rust),
-            "Parsed tags should contain Tag::Rust"
-        );
-        assert!(
-            video.tags.contains(&Tag::Technology),
-            "Parsed tags should contain Tag::Technology"
+            video.thumbnail_path.as_deref(),
+            Some("tutorials/rust/[5] [rust,tech] Advanced_Patterns.2024.jpg")
         );
         // Verify web-friendly forward slashes on all platforms
         assert!(
@@ -528,8 +499,7 @@ mod tests {
             "Scanned relative file path must use forward slashes for cross-platform web URL compatibility"
         );
         assert_eq!(
-            video.file_name,
-            "tutorials/rust/[5] [rust,tech] Advanced_Patterns.2024.mp4",
+            video.file_name, "tutorials/rust/[5] [rust,tech] Advanced_Patterns.2024.mp4",
             "Scanned file_name should match the expected relative path with forward slashes"
         );
     }

@@ -1,15 +1,16 @@
 {% extends "base.html" %}
 {% block search_value %}{{ search_query }}{% endblock %}
-{% block search_filters %}{% if !tag_filter.is_empty() %}<input type="hidden" name="tag" value="{{ tag_filter }}">{% endif %}{% endblock %}
+{% block search_filters %}<span id="profile-search-filters">{% if !tag_filter.is_empty() %}<input type="hidden" name="tag" value="{{ tag_filter }}">{% endif %}</span>{% endblock %}
 {% block home_active %}selected{% endblock %}
 {% block category_filters %}
-<nav class="category-bar" aria-label="Filter by tag">
+<nav id="profile-filters" class="category-bar" aria-label="Filter by tag">
     <a href="{{ all_url }}" class="chip {% if tag_filter.is_empty() %}selected{% endif %}" {% if tag_filter.is_empty() %}aria-current="true"{% endif %}>All</a>
     {% for tag in tags %}<a href="{{ tag.url }}" class="chip {% if tag.selected %}selected{% endif %}" {% if tag.selected %}aria-current="true"{% endif %}>{{ tag.label }}</a>{% endfor %}
 </nav>
 {% endblock %}
 {% block content %}
-<div class="feed-content">
+<div class="feed-content" id="profile-page" data-metadata-available="{% if metadata_available %}true{% else %}false{% endif %}">
+    <div id="profile-metadata-warning">{% if !metadata_available %}<p class="metadata-error">Personal metadata unavailable. Use the profile menu to retry loading.</p>{% endif %}{% if !library_metadata_available %}<p class="metadata-error">Community ratings and shared tags unavailable. Tag results and suggestions cannot be loaded. Retry loading after the profile data is repaired.</p>{% endif %}</div>
     {% match active %}
     {% when Some with (video) %}
     <div class="watch-layout">
@@ -17,16 +18,28 @@
             <div class="player-container"><video id="video-player" src="{{ video.media_url }}" {% if let Some(poster) = video.thumbnail_url %}poster="{{ poster }}"{% endif %} controls autoplay playsinline preload="metadata"></video></div>
             <h1 class="watch-title">{{ video.title }}</h1>
             <div class="watch-actions"><div class="library-identity"><span class="local-avatar">L</span><div><strong>Local library</strong><span>{{ video.format }} · {{ video.size }}</span></div></div><a href="{{ video.media_url }}" download class="button"><svg class="icon"><use href="#icon-download"/></svg>Download</a></div>
-            <div class="video-description"><span>Added <span class="time-elapsed" data-timestamp="{{ video.timestamp }}">to your library</span></span>{% if video.is_rated %}<span class="rating">{{ video.rating }}</span>{% endif %}<div class="video-tags">{% for tag in video.tags %}<span>#{{ tag }}</span>{% endfor %}</div></div>
+            <div id="watch-metadata" data-video-id="{{ video.video_id }}" class="video-description">
+                <span>Added <span class="time-elapsed" data-timestamp="{{ video.timestamp }}">to your library</span></span>
+                <span class="rating community-rating" data-video-id="{{ video.video_id }}">{{ video.community_rating }}</span>
+                <section class="shared-tags" aria-labelledby="shared-tags-label"><h2 id="shared-tags-label">All tags</h2><div id="shared-tags" class="video-tags">{% if !library_metadata_available %}<span>Tags unavailable</span>{% else if video.tags.is_empty() %}<span class="muted">No shared tags yet.</span>{% else %}{% for tag in video.tags %}<span class="shared-tag">{{ tag }}</span>{% endfor %}{% endif %}</div></section>
+                <div class="personal-editor">
+                    {% if !metadata_available %}<p class="metadata-error">Personal metadata unavailable. Retry loading your profile.</p>{% endif %}
+                    <p id="personal-status" role="status" aria-live="polite">{% if active_profile.is_none() %}Choose a profile to rate videos and manage tags.{% endif %}</p>
+                    <div class="personal-rating-row"><span id="personal-rating-label">Your rating</span><div id="personal-rating" class="rating-stars" role="group" aria-labelledby="personal-rating-label" data-rating="{% if video.personal_rating > 0 %}{{ video.personal_rating }}{% endif %}">{% for value in 1..6 %}<button type="button" class="rating-star" data-rating-value="{{ value }}" data-filled="{% if video.personal_rating >= value %}true{% else %}false{% endif %}" aria-label="Rate {{ value }} out of 5 stars" aria-pressed="{% if video.personal_rating == value %}true{% else %}false{% endif %}" {% if active_profile.is_none() || !metadata_available %}disabled{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m12 2.5 2.94 5.96 6.58.96-4.76 4.64 1.12 6.55L12 17.52l-5.88 3.09 1.12-6.55-4.76-4.64 6.58-.96Z"/></svg></button>{% endfor %}</div><span id="personal-rating-value" aria-live="polite">{% if video.personal_rating > 0 %}{{ video.personal_rating }}/5{% else %}Not rated{% endif %}</span><span class="rating-help">Select a star to save.</span></div>
+                    <h2 class="personal-tags-label">Your tags</h2><div id="personal-tags" class="video-tags">{% for tag in video.personal_tags %}<span class="personal-tag"><span>{{ tag }}</span><button type="button" data-remove-tag="{{ tag }}" aria-label="Remove your tag {{ tag }}" {% if active_profile.is_none() || !metadata_available %}disabled{% endif %}>×</button></span>{% endfor %}</div>
+                    <form id="tag-form"><label for="new-tag">Add tag</label><input id="new-tag" name="tag" list="tag-suggestions" autocomplete="off" required {% if active_profile.is_none() || !metadata_available %}disabled{% endif %}><button type="submit" class="button" {% if active_profile.is_none() || !metadata_available %}disabled{% endif %}>Add tag</button><datalist id="tag-suggestions">{% for tag in tags %}<option value="{{ tag.label }}"></option>{% endfor %}</datalist></form>
+                    <noscript><p>Rating and tag editing requires JavaScript. Browsing and profile selection work without it.</p></noscript>
+                </div>
+            </div>
             {% if video.is_mkv %}<p class="playback-note">If your browser cannot play this MKV, download it to watch with a compatible video player.</p>{% endif %}
         </section>
-        <section class="up-next" aria-label="More videos"><h2>More from your library</h2><div class="video-grid compact">{% for card in cards %}{% include "video_card.html" %}{% endfor %}</div>{% if cards.is_empty() %}<p class="muted">No videos match these filters.</p>{% endif %}</section>
+        <section id="library-results" class="up-next" aria-label="More videos"><h2>More from your library</h2><div class="video-grid compact">{% for card in cards %}{% include "video_card.html" %}{% endfor %}</div>{% if cards.is_empty() %}<p class="muted">{% if !library_metadata_available && !tag_filter.is_empty() %}Tag results unavailable. Retry loading after the profile data is repaired.{% else %}No videos match these filters.{% endif %}</p>{% endif %}</section>
     </div>
     {% when None %}
-    <div class="feed-heading"><div><p class="eyebrow">YOUR LOCAL LIBRARY</p><h1>{% if !search_query.is_empty() %}Results for “{{ search_query }}”{% else if !tag_filter.is_empty() %}{{ tag_filter }}{% else %}Your videos{% endif %}</h1></div><span class="result-count">{{ total_count }} {% if total_count == 1 %}video{% else %}videos{% endif %}</span></div>
+    <section id="library-results"><div class="feed-heading"><div><p class="eyebrow">YOUR LOCAL LIBRARY</p><h1>{% if !search_query.is_empty() %}Results for “{{ search_query }}”{% else if !tag_filter.is_empty() %}{{ tag_filter }}{% else %}Your videos{% endif %}</h1></div><span class="result-count">{{ total_count }} {% if total_count == 1 %}video{% else %}videos{% endif %}</span></div>
     <div class="video-grid">{% for card in cards %}{% include "video_card.html" %}{% endfor %}</div>
-    {% if cards.is_empty() %}<section class="empty-state"><div class="empty-icon"><svg class="icon"><use href="#icon-search"/></svg></div>{% if has_filters %}<h2>No videos found</h2><p>Try different words or clear your filters to see your library.</p><a class="button" href="/">Clear filters</a>{% else %}<h2>Your library is ready for videos</h2><p>Add videos to the folder you’re sharing, then refresh your library.</p><a class="button" href="/explorer">Browse folders</a>{% endif %}</section>{% endif %}
-    {% endmatch %}
-    {% if total_pages > 1 %}<nav class="pagination" aria-label="Video pages">{% if current_page > 1 %}<a class="button" href="{{ previous_url }}" rel="prev">Previous</a>{% endif %}<span>Page {{ current_page }} of {{ total_pages }}</span>{% if current_page < total_pages %}<a class="button" href="{{ next_url }}" rel="next">Next<svg class="icon"><use href="#icon-chevron"/></svg></a>{% endif %}</nav>{% endif %}
+    {% if cards.is_empty() %}<section class="empty-state"><div class="empty-icon"><svg class="icon"><use href="#icon-search"/></svg></div>{% if !library_metadata_available && !tag_filter.is_empty() %}<h2>Tag results unavailable</h2><p>Retry loading after the profile data is repaired, or clear your filters to browse by title.</p><a class="button" href="/">Clear filters</a>{% else if has_filters %}<h2>No videos found</h2><p>Try different words or clear your filters to see your library.</p><a class="button" href="/">Clear filters</a>{% else %}<h2>Your library is ready for videos</h2><p>Add videos to the folder you’re sharing, then refresh your library.</p><a class="button" href="/explorer">Browse folders</a>{% endif %}</section>{% endif %}
+    </section>{% endmatch %}
+    <div id="library-pagination">{% if total_pages > 1 %}<nav class="pagination" aria-label="Video pages">{% if current_page > 1 %}<a class="button" href="{{ previous_url }}" rel="prev">Previous</a>{% endif %}<span>Page {{ current_page }} of {{ total_pages }}</span>{% if current_page < total_pages %}<a class="button" href="{{ next_url }}" rel="next">Next<svg class="icon"><use href="#icon-chevron"/></svg></a>{% endif %}</nav>{% endif %}</div>
 </div>
 {% endblock %}

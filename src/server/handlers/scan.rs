@@ -52,6 +52,11 @@ mod tests {
             index_cache: Arc::new(RwLock::new(Vec::new())),
             thumbnails: None,
             scan_lock: Arc::new(Mutex::new(())),
+            profiles: Arc::new(
+                crate::profiles::ProfileManager::new(&fixture.0)
+                    .await
+                    .expect("profile manager"),
+            ),
         };
 
         let status = refresh_index_handler(State(state)).await;

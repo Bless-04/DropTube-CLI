@@ -35,7 +35,18 @@
         <div class="header-actions">
             <a class="icon-button mobile-folders" href="/explorer" aria-label="Browse folders" title="Browse folders"><svg class="icon"><use href="#icon-folder"/></svg></a>
             <button class="icon-button" id="refresh-button" aria-label="Refresh library" title="Refresh library"><svg class="icon" id="refresh-icon"><use href="#icon-refresh"/></svg></button>
-            <span class="local-avatar" title="Local library">L</span>
+            <details id="profile-menu" class="profile-menu" {% if active_profile.is_none() %}open{% endif %}>
+                <summary id="profile-context" data-profile-selected="{% if active_profile.is_some() %}true{% else %}false{% endif %}" data-profile="{% if let Some(profile) = active_profile %}{{ profile }}{% endif %}">Profile: <span id="profile-label">{% if let Some(profile) = active_profile %}{{ profile }}{% else %}Choose profile{% endif %}</span></summary>
+                <form id="profile-form" action="/api/user/profile" method="post" class="profile-panel">
+                    <label for="profile-name" id="profile-action-label">{% if active_profile.is_some() %}Switch profile{% else %}Choose a profile{% endif %}</label>
+                    <input id="profile-name" name="profile" value="{{ profile_input }}" required minlength="1" maxlength="32" pattern="[A-Za-z0-9]{1,32}" autocomplete="off" aria-describedby="profile-help">
+                    <input type="hidden" name="return_to" value="{{ return_to }}">
+                    <p id="profile-help">Names use letters and digits. Anyone choosing the same name shares its ratings and tags. Guest is shared too.</p>
+                    <button type="submit" class="button">Use profile</button>
+                    <button type="button" id="profile-retry" class="button" hidden>Retry loading</button>
+                    <p id="profile-status" role="status" aria-live="polite"></p>
+                </form>
+            </details>
         </div>
     </header>
     <aside class="sidebar" id="sidebar" aria-label="Library navigation">

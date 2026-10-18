@@ -104,11 +104,17 @@ droptube --open-tui /path/to/movies
 The terminal dashboard is strictly opt-in. Without `--open-tui`, DropTube keeps its existing
 headless command-line behavior. The dashboard lists every client IP observed since startup: green
 means the IP currently has a live TCP connection, while red means its last connection has closed.
-Use the arrow keys or Tab to move between Dashboard, Logs, and QR Code, or press `1`, `2`, or `3`
-to open a page directly. Page Up/Page Down scroll longer client and log lists. Home/End jump through
-the client list, while End returns the Logs page to its live tail. Application logs are captured and
+Use the arrow keys or Tab to move between Dashboard, Logs, QR Code, and Profiles, or press `1`, `2`,
+`3`, or `4` to open a page directly. Page Up/Page Down scroll longer client, log, and profile lists.
+Home/End jump through the client and profile lists, while End returns the Logs page to its live tail. Application logs are captured and
 rendered by `tui-logger` in the Logs page so they do not overwrite the client list. Press `q`, Escape,
 or Ctrl+C to stop the dashboard and server gracefully.
+
+The **Profiles** page is read-only. It lists saved profile names with their numbers of rated videos,
+tagged videos, and distinct tag labels among currently indexed videos. Unsaved profile selections do
+not create files or appear in this list. Counts refresh in the background every five seconds and when
+the page opens; metadata errors appear on the page without interrupting the other dashboard pages.
+Use the browser to select a profile or edit its contributions.
 
 ### Optional FFmpeg thumbnails
 
@@ -175,17 +181,21 @@ with a platform discriminator (Unix path bytes or Windows UTF-16 little-endian u
 restarts. Separate library roots have separate selections; tabs and ports serving the same library on
 the same host share the selection.
 
-On a watch page, **Your rating** saves one integer rating from 1 to 5 for that profile. Cards and the
-watch view separately show the community average and contribution count. For example, `p1=4` and
+On a watch page, choose a star under **Your rating** to save an integer rating from 1 to 5 for that
+profile immediately; no separate save button is needed. Cards and the watch view separately show
+the community average and contribution count. For example, `p1=4` and
 `p2=5` produce **4.5/5 · 2 ratings**. Changing p1 to 2 gives **3.5/5 · 2 ratings**: rerating replaces
 one contribution, and repeating a rating never adds a vote. Unrated profiles do not count. Videos with
 no contributions show **Unrated**; unreadable community metadata shows **Rating unavailable**.
 
-Use **Add tag** to create a label or reuse a suggestion. Tags accumulate; remove buttons delete only
-the selected label. Labels are trimmed, lowercased, and limited to 64 Unicode code points, with empty
-labels and control characters rejected. Tags, suggestions, tag-aware search, and filters belong to
-the active profile; community ratings are shared. Switching profiles with JavaScript keeps the current
-player mounted. When another tab switches your profile, pending edits are discarded and you are asked
+Use **Add tag** to create a label or reuse a suggestion. Tags accumulate. **All tags**, video cards,
+suggestions, tag-aware search, and filters combine labels contributed by every profile, including
+when browsing without a selected profile. Duplicate labels appear once. **Your tags** shows only
+the active profile's contributions; its remove buttons delete only that profile's selected label.
+A label remains shared while any other profile still contributes it. Labels are trimmed, lowercased,
+and limited to 64 Unicode code points, with empty labels and control characters rejected.
+Switching profiles with JavaScript keeps the current player mounted. When another tab switches your
+profile, pending edits are discarded and you are asked
 to retry against the refreshed profile. Without JavaScript, profile selection and browsing/filtering
 work through normal forms; personal editing requires JavaScript.
 
@@ -269,3 +279,10 @@ cargo test --test thumbnails -- --ignored
 
 This checks actual JPEG generation, short clips, nested/special-character filenames, cached and stale thumbnails,
 sidecar preservation, and corrupt-video handling.
+
+## License
+
+DropTube is licensed under either the [MIT License](LICENSE-MIT) or the
+[Apache License, Version 2.0](LICENSE-APACHE), at your option. Dependency licenses
+and the existing locked-version exceptions are checked by `cargo deny check`
+using the reviewed policy in `deny.toml`.

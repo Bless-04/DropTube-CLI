@@ -228,14 +228,21 @@ function initializeProfiles(document, window, media) {
     function renderPersonal() {
         const editor = document.getElementById('watch-metadata'); if (editor === null || metadata === null) return;
         const id = editor.dataset.videoId;
-        const rating = document.getElementById('personal-rating'); const tags = document.getElementById('personal-tags');
-        if (typeof id !== 'string' || id === '' || rating === null || tags === null) throw new Error('The personal editor is missing required video controls.');
-        rating.value = metadata.ratings.has(id) ? String(metadata.ratings.get(id)) : '';
+        const rating = document.getElementById('personal-rating'); const value = document.getElementById('personal-rating-value'); const tags = document.getElementById('personal-tags');
+        if (typeof id !== 'string' || id === '' || rating === null || value === null || tags === null) throw new Error('The personal editor is missing required video controls.');
+        const stars = [...rating.querySelectorAll('[data-rating-value]')];
+        if (stars.length !== 5 || stars.some((star, index) => star.dataset.ratingValue !== String(index + 1))) throw new Error('The personal editor is missing its five rating stars.');
+        const selected = metadata.ratings.has(id) ? metadata.ratings.get(id) : null;
+        rating.dataset.rating = selected === null ? '' : String(selected);
+        value.textContent = selected === null ? 'Not rated' : selected + '/5';
+        stars.forEach(star => { star.setAttribute('aria-pressed', String(Number(star.dataset.ratingValue) === selected)); star.dataset.filled = String(selected !== null && Number(star.dataset.ratingValue) <= selected); });
+        // Shared labels stay authoritative in the server-rendered shared-tags region.
+        // Only this profile's contributions receive removal controls here.
         const elements = [];
         if (metadata.tags.has(id)) for (const tag of metadata.tags.get(id)) {
             const span = document.createElement('span'); span.className = 'personal-tag';
             const text = document.createElement('span'); text.textContent = tag;
-            const remove = document.createElement('button'); remove.type = 'button'; remove.dataset.removeTag = tag; remove.setAttribute('aria-label', 'Remove tag ' + tag); remove.textContent = '×';
+            const remove = document.createElement('button'); remove.type = 'button'; remove.dataset.removeTag = tag; remove.setAttribute('aria-label', 'Remove your tag ' + tag); remove.textContent = '×';
             span.append(text, remove); elements.push(span);
         }
         tags.replaceChildren(...elements);
@@ -318,7 +325,7 @@ function initializeProfiles(document, window, media) {
             if (profile !== expected) { await reconcile(true); show('The active profile changed. Review its metadata and retry your edit.'); return; }
             const payload = { video_id: id, expected_profile: expected };
             if (kind === 'rating') payload.rating = value; else payload.tag = value;
-            state = 'saving'; controls(); sent = true;
+            state = 'saving'; controls(); show(kind === 'rating' ? 'Saving your rating…' : 'Saving your tags…'); sent = true;
             const result = await requestJson(kind === 'rating' ? '/api/user/rating' : '/api/user/tag', { method: kind === 'remove' ? 'DELETE' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             if (metadataProfile(result.response) !== expected) throw new Error('The save response belongs to another profile.');
             metadata = validateMetadata(result.value); renderPersonal();
@@ -351,17 +358,24 @@ function initializeProfiles(document, window, media) {
         } finally { mutationPending = false; controls(); }
     });
     if (page !== null) page.addEventListener('submit', async event => {
-        if (event.target.id !== 'rating-form' && event.target.id !== 'tag-form') return;
+        if (event.target.id !== 'tag-form') return;
         event.preventDefault();
         try {
-            if (event.target.id === 'rating-form') {
-                const rating = document.getElementById('personal-rating');
-                if (rating === null || rating.value.length !== 1 || !/^[1-5]$/.test(rating.value)) throw new Error('Choose a personal rating from 1 to 5.');
-                await saveEdit('rating', Number(rating.value));
-            } else { const tag = document.getElementById('new-tag'); if (tag === null) throw new Error('The tag input is missing.'); await saveEdit('tag', normalizeTag(tag.value)); }
+            const tag = document.getElementById('new-tag'); if (tag === null) throw new Error('The tag input is missing.'); await saveEdit('tag', normalizeTag(tag.value));
         } catch (error) { show(error.message); console.error('Personal edit could not start:', error); }
     });
     if (page !== null) page.addEventListener('click', async event => {
+        const star = event.target.closest('[data-rating-value]');
+        if (star !== null && page.contains(star)) {
+            try {
+                if (!/^[1-5]$/.test(star.dataset.ratingValue)) throw new Error('Choose a personal rating from 1 to 5.');
+                const editor = document.getElementById('watch-metadata');
+                const selected = Number(star.dataset.ratingValue);
+                if (editor !== null && metadata !== null && metadata.ratings.get(editor.dataset.videoId) === selected) return;
+                await saveEdit('rating', selected);
+            } catch (error) { show(error.message); console.error('Personal rating could not start:', error); }
+            return;
+        }
         const button = event.target.closest('[data-remove-tag]'); if (button === null || !page.contains(button)) return;
         try { await saveEdit('remove', normalizeTag(button.dataset.removeTag)); } catch (error) { show(error.message); console.error('Tag removal could not start:', error); }
     });

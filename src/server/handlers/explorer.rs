@@ -1,17 +1,18 @@
 use crate::models::state::AppState;
 use crate::models::video::VideoFormat;
-use crate::server::handlers::TemplateError;
+use crate::server::handlers::profiles::{ApiError, resolve_profile};
+use crate::server::protected_paths::checked_library_path;
 use askama::Template;
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{OriginalUri, Path, State},
+    http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Redirect, Response},
 };
 use local_ip_address::local_ip;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
-use std::fs;
 use std::path::Path as StdPath;
 use std::time::SystemTime;
+use tokio::fs;
 
 #[derive(Template)]
 #[template(path = "explorer.html")]
@@ -21,40 +22,51 @@ pub struct ExplorerTemplate {
     pub entries_html: String,
     pub local_ip: String,
     pub port: u16,
+    pub active_profile: Option<String>,
+    pub profile_input: String,
+    pub return_to: String,
 }
 
 /// Explorer Root routing helper
 pub async fn explorer_root_handler(
     State(state): State<AppState>,
-) -> Result<Response, TemplateError> {
-    explorer_handler(State(state), Path(String::new())).await
+    headers: HeaderMap,
+    OriginalUri(uri): OriginalUri,
+) -> Result<Response, ApiError> {
+    explorer_handler(state, String::new(), headers, uri.to_string()).await
 }
 
 /// Explorer Subdirectories routing helper
 pub async fn explorer_path_handler(
     State(state): State<AppState>,
     Path(path): Path<String>,
-) -> Result<Response, TemplateError> {
-    explorer_handler(State(state), Path(path)).await
+    headers: HeaderMap,
+    OriginalUri(uri): OriginalUri,
+) -> Result<Response, ApiError> {
+    explorer_handler(state, path, headers, uri.to_string()).await
 }
 
 /// Handles generic folder layout rendering and directory browsing
 async fn explorer_handler(
-    State(state): State<AppState>,
-    Path(sub_path): Path<String>,
-) -> Result<Response, TemplateError> {
+    state: AppState,
+    sub_path: String,
+    headers: HeaderMap,
+    return_to: String,
+) -> Result<Response, ApiError> {
+    let active_profile = resolve_profile(&headers, &state.profiles)?.map(|profile| profile.name);
     // Axum has already decoded the path once. Canonicalize before checking containment.
     let decoded_sub_path = sub_path;
-    let target_path = match state.movie_directory.join(&decoded_sub_path).canonicalize() {
+    let target_path = match checked_library_path(&state.movie_directory, &decoded_sub_path).await {
         Ok(path) => path,
-        Err(_) => return Ok(StatusCode::NOT_FOUND.into_response()),
+        Err(status) => return Ok(status.into_response()),
     };
-    if !target_path.starts_with(&state.movie_directory) {
-        return Ok(StatusCode::FORBIDDEN.into_response());
-    }
 
     // Check if Directory or File
-    if target_path.is_dir() {
+    if fs::metadata(&target_path)
+        .await
+        .map_err(explorer_io_error)?
+        .is_dir()
+    {
         let mut entries_html = String::new();
 
         // Render Back Button if in subdirectory
@@ -91,21 +103,42 @@ async fn explorer_handler(
         }
 
         // Scan directory contents
-        if let Ok(entries) = fs::read_dir(&target_path) {
+        {
+            let mut entries = fs::read_dir(&target_path)
+                .await
+                .map_err(explorer_io_error)?;
             let mut folders = Vec::new();
             let mut files = Vec::new();
 
-            for entry in entries.flatten() {
+            while let Some(entry) = entries.next_entry().await.map_err(explorer_io_error)? {
                 let name = entry.file_name().to_string_lossy().to_string();
                 if name.starts_with('.') || name.ends_with(".json") {
                     continue; // Skip hidden or sidecar files
                 }
 
                 let p = entry.path();
-                if p.is_dir() {
+                let relative = p
+                    .strip_prefix(&state.movie_directory)
+                    .map_err(|_| ApiError::internal("Could not browse this directory"))?
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                match checked_library_path(&state.movie_directory, &relative).await {
+                    Ok(_) => {}
+                    Err(StatusCode::FORBIDDEN) => continue,
+                    Err(status) => {
+                        tracing::warn!(status = %status, "Could not inspect an explorer entry");
+                        return Err(ApiError::internal("Could not browse this directory"));
+                    }
+                }
+                let meta = fs::metadata(&p).await.map_err(explorer_io_error)?;
+                if meta.is_dir() {
                     folders.push(name);
-                } else if let Ok(meta) = fs::metadata(&p) {
-                    files.push((name, meta.len(), meta.modified()));
+                } else {
+                    files.push((
+                        name,
+                        meta.len(),
+                        meta.modified().map_err(explorer_io_error)?,
+                    ));
                 }
             }
 
@@ -171,8 +204,8 @@ async fn explorer_handler(
                 };
 
                 let time_str = modified
+                    .duration_since(SystemTime::UNIX_EPOCH)
                     .ok()
-                    .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
                     .map(|d| d.as_secs())
                     .map(|sec| {
                         format!(
@@ -229,15 +262,25 @@ async fn explorer_handler(
             entries_html,
             local_ip: local_ip_addr,
             port: state.port,
+            profile_input: active_profile.clone().unwrap_or_else(|| "guest".to_owned()),
+            active_profile,
+            return_to,
         };
 
-        let full_html = template.render()?;
+        let full_html = template
+            .render()
+            .map_err(crate::server::handlers::TemplateError)?;
         Ok(Html(full_html).into_response())
     } else {
         // Redirect to the static /video endpoint
         let encoded_file = utf8_percent_encode(&decoded_sub_path, NON_ALPHANUMERIC).to_string();
         Ok(Redirect::temporary(&format!("/video/{}", encoded_file)).into_response())
     }
+}
+
+fn explorer_io_error(error: std::io::Error) -> ApiError {
+    tracing::error!(error = %error, "Could not read an explorer directory");
+    ApiError::internal("Could not browse this directory")
 }
 
 // Explorer rows still use HTML fragments; escape filesystem labels before rendering them.
@@ -254,6 +297,7 @@ fn escape_html(value: &str) -> String {
 mod tests {
     use super::*;
     use axum::body::to_bytes;
+    use std::fs;
     use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -282,7 +326,7 @@ mod tests {
             path
         }
 
-        fn state(&self) -> AppState {
+        async fn state(&self) -> AppState {
             AppState {
                 movie_directory: self.0.clone(),
                 port: 8081,
@@ -290,6 +334,11 @@ mod tests {
                 index_cache: Arc::new(RwLock::new(Vec::new())),
                 thumbnails: None,
                 scan_lock: Arc::new(Mutex::new(())),
+                profiles: Arc::new(
+                    crate::profiles::ProfileManager::new(&self.0)
+                        .await
+                        .expect("profile manager"),
+                ),
             }
         }
     }
@@ -315,10 +364,14 @@ mod tests {
         fixture.create_file("subfolder/video.mp4", b"video");
         fixture.create_file("top_level.mp4", b"video");
 
-        let response = explorer_root_handler(State(fixture.state()))
-            .await
-            .expect("render explorer root")
-            .into_response();
+        let response = explorer_root_handler(
+            State(fixture.state().await),
+            HeaderMap::new(),
+            OriginalUri("/explorer".parse().expect("URI")),
+        )
+        .await
+        .expect("render explorer root")
+        .into_response();
 
         assert_eq!(
             response.status(),
@@ -346,8 +399,10 @@ mod tests {
         fixture.create_file("my_folder/inner.mp4", b"video");
 
         let response = explorer_path_handler(
-            State(fixture.state()),
+            State(fixture.state().await),
             axum::extract::Path("my_folder".to_string()),
+            HeaderMap::new(),
+            OriginalUri("/explorer/my_folder".parse().expect("URI")),
         )
         .await
         .expect("render subfolder")
@@ -378,8 +433,10 @@ mod tests {
         let fixture = TestDir::new("exp-missing");
 
         let response = explorer_path_handler(
-            State(fixture.state()),
+            State(fixture.state().await),
             axum::extract::Path("non_existent_folder".to_string()),
+            HeaderMap::new(),
+            OriginalUri("/explorer/non_existent_folder".parse().expect("URI")),
         )
         .await
         .expect("handler returns response")
@@ -389,6 +446,25 @@ mod tests {
             response.status(),
             StatusCode::NOT_FOUND,
             "explorer_path_handler should return HTTP 404 NOT_FOUND for non-existent path"
+        );
+    }
+
+    #[tokio::test]
+    async fn unavailable_filesystem_timestamps_return_a_controlled_error_without_internal_details()
+    {
+        let response = explorer_io_error(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "could not obtain timestamp for private-library-path",
+        ))
+        .into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let body = to_bytes(response.into_body(), 1024)
+            .await
+            .expect("error response");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("JSON error");
+        assert_eq!(
+            value,
+            serde_json::json!({"error":"Could not browse this directory"})
         );
     }
 }

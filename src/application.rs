@@ -1,9 +1,11 @@
 //! Application startup, background work, and server lifecycle orchestration.
 
 use axum::Router;
+use droptube::config::constants::AppExitCode;
 use droptube::config::logger::{TuiLogControl, create_log, create_tui_log};
 use droptube::models::cli::{self, CliArgs};
 use droptube::models::state::AppState;
+use droptube::profiles::ProfileManager;
 use droptube::server::{ServerState, TrackingListener, create_router};
 use droptube::tui::{self, TuiConfig};
 use droptube::utils::display;
@@ -17,7 +19,6 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, RwLock, oneshot};
-use droptube::config::constants::AppExitCode;
 
 const BACKGROUND_SCAN_INTERVAL: Duration = Duration::from_mins(5);
 
@@ -25,6 +26,7 @@ const BACKGROUND_SCAN_INTERVAL: Duration = Duration::from_mins(5);
 const DEFAULT_PORT: u16 = 8081;
 struct Application {
     router: Router,
+    state: AppState,
     listener: TcpListener,
     directory: PathBuf,
     local_ip_address: String,
@@ -42,6 +44,7 @@ struct TuiApplication {
     listener: TcpListener,
     config: TuiConfig,
     log_control: TuiLogControl,
+    state: AppState,
 }
 
 struct ServerRunningGuard {
@@ -71,7 +74,8 @@ impl Application {
         spawn_background_scans(state.clone());
 
         Self {
-            router: create_router(state),
+            router: create_router(state.clone()),
+            state,
             listener,
             directory,
             local_ip_address,
@@ -83,6 +87,7 @@ impl Application {
     async fn serve(self) {
         let Self {
             router,
+            state,
             listener,
             directory,
             local_ip_address,
@@ -96,6 +101,7 @@ impl Application {
                 router,
                 config: TuiConfig::new(directory, local_ip_address, port),
                 log_control,
+                state,
             })
             .await;
         } else {
@@ -185,13 +191,21 @@ async fn initialize_state(
     depth: u8,
     thumbnails: Option<ThumbnailGenerator>,
 ) -> AppState {
+    let profiles = match ProfileManager::new(directory).await {
+        Ok(manager) => Arc::new(manager),
+        Err(error) => {
+            tracing::error!(error = %error, "Could not initialize library profiles");
+            std::process::exit(AppExitCode::Error.into());
+        }
+    };
     let state = AppState {
-        movie_directory: directory.to_path_buf(),
+        movie_directory: profiles.library_root().to_path_buf(),
         port: 0,
         depth,
         index_cache: Arc::new(RwLock::new(Vec::new())),
         thumbnails,
         scan_lock: Arc::new(Mutex::new(())),
+        profiles,
     };
 
     info!("Performing initial filesystem index scan...");
@@ -262,6 +276,7 @@ async fn serve_with_tui(application: TuiApplication) {
         listener,
         config,
         log_control,
+        state,
     } = application;
     let server_state = Arc::new(StdMutex::new(ServerState::default()));
     let tracking_listener = TrackingListener::new(listener, Arc::clone(&server_state));
@@ -281,13 +296,16 @@ async fn serve_with_tui(application: TuiApplication) {
             .await
     });
 
-    let tui_task = tokio::task::spawn_blocking(move || {
-        tui::run_with_logs(server_state, config, server_running, log_control)
-    });
-    match tui_task.await {
-        Ok(Ok(())) => {}
-        Ok(Err(error)) => error!("Terminal interface failed: {error}"),
-        Err(error) => error!("Terminal interface task failed: {error}"),
+    match tui::run_with_profiles(
+        server_state,
+        config,
+        server_running,
+        tui::ProfileTuiContext::new(state, log_control),
+    )
+    .await
+    {
+        Ok(()) => {}
+        Err(error) => error!("Terminal interface failed: {error}"),
     }
     if shutdown_sender.send(()).is_err() {
         info!("Server shutdown was already in progress");

@@ -1,5 +1,6 @@
 //! Terminal dashboard layout and component rendering.
 
+use super::profiles::ProfilesStatus;
 use super::runtime::ViewState;
 use crate::server::ClientSnapshot;
 use crate::utils;
@@ -7,7 +8,7 @@ use qr2term::render::{QrDark, QrLight};
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table, Wrap};
 use std::path::PathBuf;
 use tui_logger::{TuiLoggerLevelOutput, TuiLoggerWidget, TuiWidgetState};
 
@@ -26,6 +27,8 @@ pub(super) enum Page {
     Logs,
     /// Scannable LAN URL.
     QrCode,
+    /// Read-only counts from committed profiles.
+    Profiles,
 }
 
 impl Page {
@@ -35,7 +38,8 @@ impl Page {
         match self {
             Self::Dashboard => Self::Logs,
             Self::Logs => Self::QrCode,
-            Self::QrCode => Self::Dashboard,
+            Self::QrCode => Self::Profiles,
+            Self::Profiles => Self::Dashboard,
         }
     }
 
@@ -43,9 +47,10 @@ impl Page {
     #[must_use]
     pub(super) const fn previous(self) -> Self {
         match self {
-            Self::Dashboard => Self::QrCode,
+            Self::Dashboard => Self::Profiles,
             Self::Logs => Self::Dashboard,
             Self::QrCode => Self::Logs,
+            Self::Profiles => Self::QrCode,
         }
     }
 }
@@ -115,13 +120,13 @@ pub(super) fn render(
         ),
         Page::Logs => render_logs(frame, log_state, content_area),
         Page::QrCode => render_qr_code(frame, config, content_area),
+        Page::Profiles => render_profiles(frame, view_state, content_area),
     }
 
-    let footer = Paragraph::new(
-        "↑/↓ or Tab: pages  •  PgUp/PgDn: scroll  •  End: live logs  •  1/2/3: open  •  q: shut down",
-    )
-    .alignment(Alignment::Center)
-    .style(Style::default().fg(Color::DarkGray));
+    let footer =
+        Paragraph::new("↑/↓/Tab: pages · PgUp/PgDn/Home/End: scroll · 1–4: open · q: shut down")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::DarkGray));
     frame.render_widget(footer, footer_area);
 }
 
@@ -149,6 +154,7 @@ fn render_menu(frame: &mut ratatui::Frame<'_>, selected: Page, area: Rect) {
         (Page::Dashboard, "1  Dashboard"),
         (Page::Logs, "2  Logs"),
         (Page::QrCode, "3  QR Code"),
+        (Page::Profiles, "4  Profiles"),
     ];
     let items = entries.into_iter().map(|(page, label)| {
         let (prefix, style) = if page == selected {
@@ -254,6 +260,92 @@ fn metric(label: &str, value: usize, color: Color) -> Span<'static> {
         format!("{label}: {value}"),
         Style::default().fg(color).add_modifier(Modifier::BOLD),
     )
+}
+
+fn render_profiles(frame: &mut ratatui::Frame<'_>, view_state: &ViewState, area: Rect) {
+    let [description_area, table_area] =
+        Layout::vertical([Constraint::Length(3), Constraint::Min(3)]).areas(area);
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::styled(
+                "Read only · refreshes every 5s",
+                Style::default().fg(Color::Cyan),
+            ),
+            Line::raw("Indexed videos only · edit in the browser"),
+            Line::raw("Tags = unique labels used by each profile"),
+        ]),
+        description_area,
+    );
+    let profiles = match &view_state.profiles {
+        ProfilesStatus::Ready(profiles) if !profiles.is_empty() => profiles,
+        status => {
+            let message = match status {
+                ProfilesStatus::Disconnected => {
+                    "Profile source unavailable for this terminal session"
+                }
+                ProfilesStatus::Loading => "Loading profiles…",
+                ProfilesStatus::Ready(_) => {
+                    "No saved profiles yet. Rate or tag a video in the browser."
+                }
+                ProfilesStatus::Error => {
+                    "Profiles unavailable. Check library metadata; retrying automatically."
+                }
+            };
+            frame.render_widget(
+                Paragraph::new(message)
+                    .block(
+                        Block::default()
+                            .title(" Profiles · read only ")
+                            .borders(Borders::ALL),
+                    )
+                    .wrap(Wrap { trim: true }),
+                table_area,
+            );
+            return;
+        }
+    };
+    let available_rows = usize::from(table_area.height.saturating_sub(3));
+    let first_visible = view_state
+        .profile_scroll
+        .min(profiles.len().saturating_sub(available_rows));
+    let visible_count = profiles
+        .len()
+        .saturating_sub(first_visible)
+        .min(available_rows);
+    let rows = profiles
+        .iter()
+        .skip(first_visible)
+        .take(available_rows)
+        .map(|profile| {
+            Row::new(vec![
+                Cell::from(profile.name.as_str()),
+                Cell::from(profile.rating_count.to_string()),
+                Cell::from(profile.tagged_video_count.to_string()),
+                Cell::from(profile.tag_count.to_string()),
+            ])
+        });
+    let title = format!(
+        " Profiles ({}) · {}–{} · read only ",
+        profiles.len(),
+        first_visible.saturating_add(1),
+        first_visible.saturating_add(visible_count),
+    );
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Min(10),
+            Constraint::Length(6),
+            Constraint::Length(13),
+            Constraint::Length(5),
+        ],
+    )
+    .header(
+        Row::new(["Profile", "Rated", "Tagged videos", "Tags"])
+            .style(Style::default().add_modifier(Modifier::BOLD)),
+    )
+    .column_spacing(1)
+    .block(Block::default().title(title).borders(Borders::ALL));
+    frame.render_widget(table, table_area);
 }
 
 fn detail_line<'a>(label: &'a str, value: &'a str) -> Line<'a> {
@@ -380,14 +472,21 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
     fn rendered_page(page: Page, width: u16, height: u16) -> String {
+        rendered_view(
+            ViewState {
+                page,
+                ..ViewState::default()
+            },
+            width,
+            height,
+        )
+    }
+
+    fn rendered_view(view_state: ViewState, width: u16, height: u16) -> String {
         let backend = TestBackend::new(width, height);
         let mut terminal = Terminal::new(backend).expect("test terminal should initialize");
         let config = TuiConfig::new(PathBuf::from("videos"), "192.168.1.2".to_owned(), 8081);
 
-        let view_state = ViewState {
-            page,
-            ..ViewState::default()
-        };
         let log_state = TuiWidgetState::new().set_default_display_level(log::LevelFilter::Info);
         terminal
             .draw(|frame| render(frame, &config, &[], &view_state, &log_state))
@@ -415,14 +514,72 @@ mod tests {
         );
         assert_eq!(
             Page::QrCode.next(),
-            Page::Dashboard,
-            "Next page after QrCode should wrap around to Dashboard"
+            Page::Profiles,
+            "Next page after QrCode should be Profiles"
         );
         assert_eq!(
             Page::Dashboard.previous(),
-            Page::QrCode,
-            "Previous page before Dashboard should wrap around to QrCode"
+            Page::Profiles,
+            "Previous page before Dashboard should wrap around to Profiles"
         );
+        assert_eq!(Page::Profiles.next(), Page::Dashboard);
+        assert_eq!(Page::Profiles.previous(), Page::QrCode);
+    }
+
+    #[test]
+    fn profile_page_reports_loading_empty_errors_and_legacy_disconnection() {
+        for (profiles, expected) in [
+            (ProfilesStatus::Disconnected, "Profile source unavailable"),
+            (ProfilesStatus::Loading, "Loading profiles"),
+            (
+                ProfilesStatus::Ready(std::sync::Arc::new(Vec::new())),
+                "No saved profiles yet",
+            ),
+            (ProfilesStatus::Error, "Profiles unavailable"),
+        ] {
+            let rendered = rendered_view(
+                ViewState {
+                    page: Page::Profiles,
+                    profiles,
+                    ..ViewState::default()
+                },
+                100,
+                24,
+            );
+            assert!(rendered.contains(expected), "missing status {expected}");
+            assert!(rendered.contains("Read only"));
+            assert!(!rendered.contains("No clients observed yet"));
+        }
+    }
+
+    #[test]
+    fn profile_page_displays_counts_and_scrolls_to_the_last_profiles() {
+        let profiles = (1..=12)
+            .map(|number| crate::profiles::ProfileSummary {
+                name: format!("profile{number:02}"),
+                rating_count: number,
+                tagged_video_count: number + 1,
+                tag_count: number + 2,
+            })
+            .collect::<Vec<_>>();
+        let rendered = rendered_view(
+            ViewState {
+                page: Page::Profiles,
+                profile_scroll: usize::MAX,
+                profiles: ProfilesStatus::Ready(std::sync::Arc::new(profiles)),
+                ..ViewState::default()
+            },
+            100,
+            14,
+        );
+        assert!(rendered.contains("profile12"));
+        assert!(!rendered.contains("profile01"));
+        assert!(rendered.contains("Rated"));
+        assert!(rendered.contains("Tagged videos"));
+        assert!(rendered.contains("Tags"));
+        assert!(rendered.contains("12"));
+        assert!(rendered.contains("13"));
+        assert!(rendered.contains("14"));
     }
 
     #[test]

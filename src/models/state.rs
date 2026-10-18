@@ -1,4 +1,5 @@
 use crate::models::video::VideoFile;
+use crate::profiles::ProfileManager;
 use crate::utils::scanner::{ScanDirectoryParams, scan_directory};
 use crate::utils::thumbnails::ThumbnailGenerator;
 use std::path::PathBuf;
@@ -22,6 +23,8 @@ pub struct AppState {
     pub thumbnails: Option<ThumbnailGenerator>,
     /// Serializes full scans so background and manual refreshes cannot race.
     pub scan_lock: Arc<Mutex<()>>,
+    /// Persistent personal metadata and transaction locks shared by all requests.
+    pub profiles: Arc<ProfileManager>,
 }
 
 impl AppState {
@@ -111,7 +114,7 @@ mod tests {
             path
         }
 
-        fn state(&self, depth: u8) -> AppState {
+        async fn state(&self, depth: u8) -> AppState {
             AppState {
                 movie_directory: self.0.clone(),
                 port: 8081,
@@ -119,6 +122,7 @@ mod tests {
                 index_cache: Arc::new(RwLock::new(Vec::new())),
                 thumbnails: None,
                 scan_lock: Arc::new(Mutex::new(())),
+                profiles: Arc::new(ProfileManager::new(&self.0).await.expect("profile manager")),
             }
         }
     }
@@ -152,7 +156,7 @@ mod tests {
             .set_times(FileTimes::new().set_modified(new_time))
             .expect("set time v2");
 
-        let state = fixture.state(255);
+        let state = fixture.state(255).await;
         state.refresh_index().await.expect("refresh index");
 
         let index = state.index_cache.read().await;
@@ -177,7 +181,7 @@ mod tests {
         fixture.create_file("show.mp4", b"video");
         fixture.create_file("show.jpg", b"image-sidecar");
 
-        let state = fixture.state(0);
+        let state = fixture.state(0).await;
         state.refresh_index().await.expect("refresh index");
 
         let index = state.index_cache.read().await;
@@ -200,7 +204,7 @@ mod tests {
         fixture.create_file("sub/child.mp4", b"video");
 
         // max_depth = 0: only root
-        let state0 = fixture.state(0);
+        let state0 = fixture.state(0).await;
         state0.refresh_index().await.expect("refresh index");
         assert_eq!(
             state0.index_cache.read().await.len(),
@@ -209,7 +213,7 @@ mod tests {
         );
 
         // max_depth = 1: root and sub
-        let state1 = fixture.state(1);
+        let state1 = fixture.state(1).await;
         state1.refresh_index().await.expect("refresh index");
         assert_eq!(
             state1.index_cache.read().await.len(),
@@ -225,7 +229,7 @@ mod tests {
             fixture.create_file(&format!("video_{i}.mp4"), b"video");
         }
 
-        let state = fixture.state(255);
+        let state = fixture.state(255).await;
 
         // Spawn multiple concurrent refresh calls
         let (r1, r2, r3) = tokio::join!(
@@ -245,4 +249,3 @@ mod tests {
         );
     }
 }
-
