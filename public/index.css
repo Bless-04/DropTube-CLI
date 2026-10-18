@@ -1,8 +1,10 @@
 :root { color-scheme: dark; --background: #0f0f0f; --surface: #272727; --muted: #aaa; --line: #303030; --sidebar-width: 212px; }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; background: var(--background); color: #f1f1f1; font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.4; }
 a { color: inherit; text-decoration: none; }
 button, input { font: inherit; }
+select { font: inherit; color: inherit; }
 button, a, input { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; }
 button:disabled { cursor: wait; opacity: .65; }
@@ -98,6 +100,9 @@ h1 { font-size: 24px; line-height: 1.3; margin: 0; font-weight: 600; letter-spac
 .library-identity div span { color: var(--muted); margin-top: 3px; font-size: 12px; }
 .video-description { background: #272727; border-radius: 12px; padding: 14px; display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; }
 .video-tags { display: flex; gap: 8px; width: 100%; color: #aaa; flex-wrap: wrap; }
+.shared-tags { width: 100%; }
+.shared-tags h2, .personal-tags-label { margin: 12px 0 8px; font-size: 14px; }
+.shared-tag { border: 1px solid #3a3a3a; border-radius: 4px; padding: 3px 7px; overflow-wrap: anywhere; }
 .playback-note, .muted { color: var(--muted); font-size: 13px; }
 .up-next h2 { font-size: 14px; font-weight: 600; margin: 0 0 16px; }
 .compact { grid-template-columns: 1fr; gap: 16px; }
@@ -119,6 +124,31 @@ h1 { font-size: 24px; line-height: 1.3; margin: 0; font-weight: 600; letter-spac
 .explorer td:first-child { color: #eee; min-width: 240px; }
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); padding: 14px 22px; background: #eee; color: #111; box-shadow: 0 4px 20px #0006; border-radius: 8px; z-index: 50; max-width: 90vw; }
 .animate-spin { animation: spin 1s linear infinite; }
+.profile-menu { position: relative; font-size: 12px; flex-shrink: 0; }
+.profile-menu summary { cursor: pointer; padding: 9px 12px; border-radius: 18px; background: var(--surface); }
+.profile-panel { position: absolute; right: 0; top: 42px; width: min(310px, 90vw); padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: #1b1b1b; box-shadow: 0 8px 24px #0008; }
+.profile-panel label { display: block; font-weight: 600; margin-bottom: 8px; }
+.profile-panel input { width: 100%; }
+.profile-panel p { color: var(--muted); line-height: 1.6; }
+.profile-panel #profile-status, .metadata-error { color: #ffb4a9; }
+.profile-panel input, .personal-editor input, .personal-editor select { background: #121212; border: 1px solid #555; border-radius: 6px; padding: 8px; min-width: 0; }
+.personal-editor { width: 100%; border-top: 1px solid #444; padding-top: 12px; }
+.personal-editor form { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.personal-editor input { flex: 1; }
+.personal-editor label { font-weight: 600; }
+.personal-rating-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+#personal-rating-label { font-weight: 600; }
+.rating-stars { display: inline-flex; gap: 2px; }
+.rating-star { display: grid; place-items: center; width: 40px; height: 40px; padding: 5px; border: 0; border-radius: 6px; background: transparent; color: #aaa; }
+.rating-star svg { width: 28px; height: 28px; stroke: currentColor; stroke-width: 1.5; fill: transparent; }
+.rating-star[data-filled="true"] { color: #e6b955; }
+.rating-star[data-filled="true"] svg { fill: currentColor; }
+.rating-star:hover:not(:disabled) { background: #414141; color: #f0cb79; }
+.rating-star[aria-pressed="true"] { box-shadow: inset 0 -2px currentColor; }
+.rating-help { color: var(--muted); font-size: 12px; }
+.personal-tag { display: inline-flex; gap: 5px; align-items: center; border: 1px solid #555; border-radius: 6px; padding: 3px 7px; color: #ddd; }
+.personal-tag button { background: none; border: 0; font-size: 20px; line-height: 1; padding: 2px 4px; }
+.community-rating { margin: 7px 0; font-size: 12px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 body.sidebar-collapsed { --sidebar-width: 72px; }
 .sidebar-collapsed .nav-link { flex-direction: column; gap: 5px; padding: 14px 0; font-size: 9px; }
