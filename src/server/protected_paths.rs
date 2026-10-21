@@ -99,14 +99,14 @@ mod tests {
     #[test]
     fn internal_profile_variants_are_blocked_without_blocking_thumbnails() {
         for path in [
-            ".droptube/profiles/alice/metadata.json",
-            ".DROPTUBE/PROFILES/alice/metadata.json",
-            ".droptube./profiles /alice/metadata.json",
+            ".droptube/profiles/alice/ratings.json",
+            ".DROPTUBE/PROFILES/alice/ratings.json",
+            ".droptube./profiles /alice/ratings.json",
             ".droptube/profiles/alice/.metadata-1.tmp",
-            "movies/.droptube/profiles/alice/metadata.json",
-            "../.droptube/profiles/alice/metadata.json",
-            ".droptube\\profiles\\alice\\metadata.json",
-            "/.droptube/profiles/alice/metadata.json",
+            "movies/.droptube/profiles/alice/ratings.json",
+            "../.droptube/profiles/alice/ratings.json",
+            ".droptube\\profiles\\alice\\ratings.json",
+            "/.droptube/profiles/alice/ratings.json",
         ] {
             assert_eq!(
                 validate_relative(path),
@@ -127,14 +127,14 @@ mod tests {
     #[test]
     fn encoded_paths_are_checked_after_exactly_one_decode() {
         for raw in [
-            "%2edroptube/profiles/alice/metadata.json",
-            ".droptube%2fprofiles%2falice%2fmetadata.json",
-            "%2EDROPTUBE/%50ROFILES/alice/metadata.json",
+            "%2edroptube/profiles/alice/ratings.json",
+            ".droptube%2fprofiles%2falice%2fratings.json",
+            "%2EDROPTUBE/%50ROFILES/alice/ratings.json",
         ] {
             let decoded = percent_decode_str(raw).decode_utf8().expect("UTF8 path");
             assert_eq!(validate_relative(&decoded), Err(StatusCode::FORBIDDEN));
         }
-        let decoded = percent_decode_str("%252edroptube/profiles/alice/metadata.json")
+        let decoded = percent_decode_str("%252edroptube/profiles/alice/ratings.json")
             .decode_utf8()
             .expect("UTF8 literal percent path");
         assert_eq!(
@@ -150,8 +150,8 @@ mod tests {
         for raw in [
             "film.mp4:secret",
             "film.mp4%3asecret",
-            ".droptube/profiles::$INDEX_ALLOCATION/alice/metadata.json",
-            ".droptube/profiles%3a%3a%24INDEX_ALLOCATION/alice/metadata.json",
+            ".droptube/profiles::$INDEX_ALLOCATION/alice/ratings.json",
+            ".droptube/profiles%3a%3a%24INDEX_ALLOCATION/alice/ratings.json",
             "C:film.mp4",
         ] {
             let decoded = percent_decode_str(raw)
@@ -177,7 +177,7 @@ mod tests {
         fs::create_dir_all(root.join(".droptube/profiles/alice"))
             .await
             .expect("create profile fixture");
-        fs::write(root.join(".droptube/profiles/alice/metadata.json"), b"{}")
+        fs::write(root.join(".droptube/profiles/alice/ratings.json"), b"{}")
             .await
             .expect("write profile fixture");
         fs::write(root.join("film.mp4"), b"video")
@@ -186,7 +186,7 @@ mod tests {
         let root = fs::canonicalize(root).await.expect("canonical root");
         assert!(checked_library_path(&root, "film.mp4").await.is_ok());
         assert_eq!(
-            checked_library_path(&root, ".droptube/profiles/alice/metadata.json").await,
+            checked_library_path(&root, ".droptube/profiles/alice/ratings.json").await,
             Err(StatusCode::FORBIDDEN)
         );
         assert_eq!(
@@ -198,7 +198,7 @@ mod tests {
             std::os::unix::fs::symlink(root.join(".droptube/profiles"), root.join("alias"))
                 .expect("symlink profile directory");
             assert_eq!(
-                checked_library_path(&root, "alias/alice/metadata.json").await,
+                checked_library_path(&root, "alias/alice/ratings.json").await,
                 Err(StatusCode::FORBIDDEN)
             );
             std::os::unix::fs::symlink(root.parent().expect("root parent"), root.join("outside"))
@@ -223,7 +223,7 @@ mod tests {
                 String::from_utf8_lossy(&output.stderr)
             );
             assert_eq!(
-                checked_library_path(&root, "alias/alice/metadata.json").await,
+                checked_library_path(&root, "alias/alice/ratings.json").await,
                 Err(StatusCode::FORBIDDEN)
             );
             fs::remove_dir(root.join("alias"))

@@ -54,7 +54,7 @@ struct VideoCard {
     tags: Vec<String>,
     personal_tags: Vec<String>,
     community_rating: String,
-    personal_rating: u8,
+    personal_rating: f64,
     is_playing: bool,
     is_mkv: bool,
 }
@@ -132,8 +132,8 @@ impl VideoCard {
                 .metadata
                 .ratings
                 .get(&video.file_name)
-                .copied()
-                .unwrap_or(0),
+                .map(|rating| rating.stars())
+                .unwrap_or(0.0),
             is_playing: query.v.as_deref() == Some(video.file_name.as_str()),
             is_mkv: video.format == VideoFormat::Mkv,
         }
@@ -477,7 +477,10 @@ mod tests {
     fn watch_render_separates_personal_rating_from_community_and_preserves_filters() {
         let videos = vec![video("First"), video("Second")];
         let mut metadata = metadata(&videos);
-        metadata.ratings.insert(videos[1].file_name.clone(), 5);
+        metadata.ratings.insert(
+            videos[1].file_name.clone(),
+            crate::profiles::PersonalRating::new(5.0).expect("valid rating"),
+        );
         let aggregates = HashMap::from([(
             videos[1].file_name.clone(),
             AggregateRating {

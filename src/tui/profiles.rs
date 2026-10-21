@@ -263,7 +263,7 @@ mod tests {
             .set_rating("alice".to_owned(), "movie.mp4".to_owned(), 4)
             .await
             .expect("initial rating");
-        let metadata = fixture.0.join(".droptube/profiles/alice/metadata.json");
+        let metadata = fixture.0.join(".droptube/profiles/alice/ratings.json");
         tokio::fs::write(&metadata, b"corrupt")
             .await
             .expect("corrupt fixture");
@@ -272,7 +272,7 @@ mod tests {
             next_status(&mut monitor).await,
             ProfilesStatus::Error
         ));
-        tokio::fs::write(&metadata, br#"{"ratings":{"movie.mp4":5},"tags":{}}"#)
+        tokio::fs::write(&metadata, br#"{"movie.mp4":4.5}"#)
             .await
             .expect("repair fixture");
         monitor.feed.request_refresh();
@@ -296,6 +296,62 @@ mod tests {
         monitor.stop().await.expect("cancel blocked reader");
         assert!(monitor.task.is_none());
         assert!(matches!(monitor.feed.snapshot(), ProfilesStatus::Error));
+    }
+
+    #[tokio::test]
+    async fn background_refresh_discovers_split_profiles_without_writing() {
+        let fixture = Fixture::new();
+        let sources = [
+            ("both/ratings.json", br#"{"movie.mp4":4.5}"#.as_slice()),
+            ("both/tags.json", br#"{"movie.mp4":["shared"]}"#),
+            (
+                "ratingonly/ratings.json",
+                br#"{"movie.mp4":0.5,"orphan.mp4":5}"#,
+            ),
+            ("tagonly/tags.json", br#"{"movie.mp4":["shared"]}"#),
+            ("unrelated/notes.json", b"not profile contributions"),
+            ("pending/ratings.json.1.tmp", b"incomplete"),
+        ];
+        let root = fixture.0.join(".droptube/profiles");
+        for (relative, bytes) in sources {
+            let path = root.join(relative);
+            tokio::fs::create_dir_all(path.parent().expect("profile parent"))
+                .await
+                .expect("profile directory");
+            tokio::fs::write(path, bytes).await.expect("source fixture");
+        }
+        let state = fixture.state().await;
+        let mut monitor = ProfileMonitor::start(state);
+        for refresh in 0..2 {
+            if refresh != 0 {
+                monitor.feed.request_refresh();
+            }
+            let ProfilesStatus::Ready(profiles) = next_status(&mut monitor).await else {
+                panic!("expected committed profiles");
+            };
+            assert_eq!(
+                profiles
+                    .iter()
+                    .map(|profile| profile.name.as_str())
+                    .collect::<Vec<_>>(),
+                ["both", "ratingonly", "tagonly"]
+            );
+            assert_eq!(profiles[1].rating_count, 1);
+            assert_eq!(profiles[1].tag_count, 0);
+            assert_eq!(profiles[2].rating_count, 0);
+            assert_eq!(profiles[2].tag_count, 1);
+        }
+        monitor.stop().await.expect("stop reader");
+        for (relative, bytes) in sources {
+            assert_eq!(
+                tokio::fs::read(root.join(relative))
+                    .await
+                    .expect("unchanged fixture"),
+                bytes
+            );
+        }
+        assert!(!root.join("ratingonly/tags.json").exists());
+        assert!(!root.join("tagonly/ratings.json").exists());
     }
 
     #[tokio::test]
