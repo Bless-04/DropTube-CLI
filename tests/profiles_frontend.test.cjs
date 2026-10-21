@@ -73,7 +73,7 @@ function makeDocument(profile, { watch = true, metadataAvailable = true, sharedT
         for (const label of sharedTags) { const span = new Element(); span.textContent = label; shared.append(span); }
         const rating = element('personal-rating'); const tags = element('personal-tags');
         const stars = [];
-        for (let value = 1; value <= 5; value += 1) {
+        for (let value = 0.5; value <= 5; value += 0.5) {
             const star = element('rating-star-' + value); star.dataset.ratingValue = String(value);
             star.setAttribute('aria-label', 'Rate ' + value + ' out of 5 stars'); stars.push(star);
         }
@@ -146,7 +146,7 @@ function browser({ profile = 'alice', watch = true, overrides = null, missing = 
         if (body.expected_profile !== selected) return json({ error: 'Active profile changed.' }, { status: 409 });
         if (url === '/api/user/rating') {
             entry.ratings[body.video_id] = body.rating;
-            const contributions = [...data.values()].map(metadata => metadata.ratings['film.mp4']).filter(Number.isInteger);
+            const contributions = [...data.values()].map(metadata => metadata.ratings['film.mp4']).filter(value => typeof value === "number");
             aggregates = { ratings: { 'film.mp4': { average: contributions.reduce((sum, rating) => sum + rating, 0) / contributions.length, count: contributions.length } } };
         } else {
             const tags = new Set(entry.tags[body.video_id] || []);
@@ -187,7 +187,7 @@ test('profile validation rejects whitespace, traversal, non-ASCII, punctuation a
 test('metadata validators reject wrong types, invalid ratings and noncanonical tags; inherited keys are ignored', () => {
     const context = helpers();
     for (const value of [null, [], {}, { ratings: [], tags: {} }, { ratings: {}, tags: null },
-        { ratings: { movie: 0 }, tags: {} }, { ratings: { movie: 4.5 }, tags: {} }, { ratings: { movie: '4' }, tags: {} },
+        { ratings: { movie: 0 }, tags: {} }, { ratings: { movie: 4.25 }, tags: {} }, { ratings: { movie: '4' }, tags: {} },
         { ratings: {}, tags: { movie: 'tag' } }, { ratings: {}, tags: { movie: ['Tag'] } }, { ratings: {}, tags: { movie: ['a', 'a'] } }]) {
         assert.throws(() => context.validateMetadata(value));
     }
@@ -214,6 +214,66 @@ test('aggregate validation keeps null/count invariant and rejects unsafe numbers
         assert.throws(() => context.validateAggregates({ ratings: { movie: rating } }));
     }
     assert.equal(context.validateAggregates({ ratings: { movie: { average: null, count: 0 } } }).get('movie').average, null);
+});
+
+test('personal validation accepts exactly ten half-star values and keeps arbitrary community fractions', () => {
+    const context = helpers();
+    for (let value = 0.5; value <= 5; value += 0.5) {
+        assert.equal(context.validateMetadata({ ratings: { movie: value }, tags: {} }).ratings.get('movie'), value);
+    }
+    for (const value of [0, -1, 0.25, 4.2, 4.25, 5.5, NaN, Infinity, -Infinity, null, true, '4.5']) {
+        assert.throws(() => context.validateMetadata({ ratings: { movie: value }, tags: {} }));
+    }
+    for (const value of [0.5, 4.25, 3.8333333333333335]) {
+        assert.equal(context.validateAggregates({ ratings: { movie: { average: value, count: 3 } } }).get('movie').average, value);
+    }
+    assert.throws(() => context.validateAggregates({ ratings: { movie: { average: 0.25, count: 1 } } }));
+});
+
+test('each half-star control saves once and preserves exact personal and community values', async () => {
+    const fixture = browser(); await fixture.ready;
+    for (let value = 0.5; value <= 5; value += 0.5) {
+        const before = fixture.calls.filter(call => call.url === '/api/user/rating').length;
+        await fixture.get('profile-page').dispatch('click', fixture.get('rating-star-' + value));
+        assert.equal(fixture.calls.filter(call => call.url === '/api/user/rating').length, before + 1);
+        assert.equal(fixture.data.get('alice').ratings['film.mp4'], value);
+        assert.equal(fixture.get('personal-rating-value').textContent, value + '/5');
+        assert.equal(fixture.get('rating-star-' + value).attributes['aria-pressed'], 'true');
+        assert.equal(fixture.get('watch-aggregate').textContent, (Math.round((value + 5) * 5) / 10).toFixed(1) + '/5 · 2 ratings');
+    }
+});
+
+test('half stars stay selected independently across profile switching and rounded community displays', async () => {
+    const fixture = browser(); await fixture.ready;
+    await fixture.get('profile-page').dispatch('click', fixture.get('rating-star-3.5'));
+    assert.equal(fixture.get('rating-star-3.5').dataset.filled, 'true');
+    assert.equal(fixture.get('rating-star-4').dataset.filled, 'false');
+    const player = fixture.get('video-player');
+    fixture.get('profile-name').value = 'bob'; await fixture.get('profile-form').dispatch('submit');
+    await fixture.get('profile-page').dispatch('click', fixture.get('rating-star-4.5'));
+    assert.equal(fixture.get('watch-aggregate').textContent, '4.0/5 · 2 ratings');
+    fixture.get('profile-name').value = 'alice'; await fixture.get('profile-form').dispatch('submit');
+    assert.equal(fixture.get('personal-rating-value').textContent, '3.5/5');
+    await fixture.get('profile-page').dispatch('click', fixture.get('rating-star-4'));
+    assert.equal(fixture.get('watch-aggregate').textContent, '4.3/5 · 2 ratings');
+    assert.equal(fixture.get('video-player'), player);
+    assert.equal(player.currentTime, 37);
+});
+
+test('stale half-star proposals are discarded and uncertain half-star commits reconcile without replay', async () => {
+    const stale = browser(); await stale.ready; stale.setProfile('bob');
+    await stale.get('profile-page').dispatch('click', stale.get('rating-star-0.5'));
+    assert.equal(stale.calls.some(call => call.url === '/api/user/rating'), false);
+    assert.equal(stale.get('personal-rating-value').textContent, '5/5');
+    const uncertain = browser({ overrides: async (call, { standard }) => {
+        if (call.url === '/api/user/rating') { await standard(call.url, call.options); throw new Error('Lost half-star response after commit'); }
+    } });
+    await uncertain.ready;
+    await uncertain.get('profile-page').dispatch('click', uncertain.get('rating-star-0.5'));
+    assert.equal(uncertain.calls.filter(call => call.url === '/api/user/rating').length, 1);
+    assert.equal(uncertain.get('personal-rating-value').textContent, '0.5/5');
+    assert.equal(uncertain.get('rating-star-0.5').disabled, false);
+    assert.equal(uncertain.get('watch-aggregate').textContent, '2.8/5 · 2 ratings');
 });
 test('JSON boundaries validate error contracts, content types, malformed body and profile headers', async () => {
     const fixture = browser(); await fixture.ready;
@@ -353,7 +413,7 @@ test('an unrated selected profile has five empty stars until a selection is save
     const fixture = browser({ profile: 'guest' }); await fixture.ready;
     assert.equal(fixture.get('personal-rating').dataset.rating, '');
     assert.equal(fixture.get('personal-rating-value').textContent, 'Not rated');
-    for (let value = 1; value <= 5; value += 1) {
+    for (let value = 0.5; value <= 5; value += 0.5) {
         const star = fixture.get('rating-star-' + value);
         assert.equal(star.dataset.filled, 'false');
         assert.equal(star.attributes['aria-pressed'], 'false');
@@ -367,14 +427,14 @@ test('an unrated selected profile has five empty stars until a selection is save
 });
 test('invalid star values cannot start a write and missing star controls disable the editor', async () => {
     const fixture = browser(); await fixture.ready;
-    fixture.get('rating-star-2').dataset.ratingValue = '2.5';
+    fixture.get('rating-star-2').dataset.ratingValue = '2.25';
     await fixture.get('profile-page').dispatch('click', fixture.get('rating-star-2'));
     assert.equal(fixture.calls.some(call => call.url === '/api/user/rating'), false);
-    assert.match(fixture.get('profile-status').textContent, /from 1 to 5/);
+    assert.match(fixture.get('profile-status').textContent, /from 0.5 to 5/);
     const missing = browser(); missing.get('personal-rating').children.pop();
     await missing.ready;
     assert.equal(missing.get('rating-star-1').disabled, true);
-    assert.match(missing.get('profile-status').textContent, /five rating stars/);
+    assert.match(missing.get('profile-status').textContent, /ten half-star controls/);
 });
 test('rejected automatic rating saves retain the committed stars and recover all star controls', async () => {
     const fixture = browser({ overrides(call) {
@@ -393,8 +453,8 @@ test('rejected automatic rating saves retain the committed stars and recover all
 test('server-rendered rating images use native labelled buttons without a confirmation form', () => {
     const template = fs.readFileSync(path.join(__dirname, '../templates/home.html'), 'utf8');
     assert.match(template, /id="personal-rating"[^>]*role="group"[^>]*aria-labelledby="personal-rating-label"/);
-    assert.match(template, /<button type="button" class="rating-star"[^>]*data-rating-value=/);
-    assert.match(template, /aria-label="Rate \{\{ value \}\} out of 5 stars" aria-pressed=/);
+    assert.match(template, /<button type="button" class="rating-star rating-half"[^>]*data-rating-value=/);
+    assert.match(template, /aria-label="Rate \{\{ full as f64 - 0.5 \}\} out of 5 stars" aria-pressed=/);
     assert.match(template, /<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path/);
     assert.equal(template.includes('id="rating-form"'), false);
     assert.equal(template.includes('<select id="personal-rating"'), false);

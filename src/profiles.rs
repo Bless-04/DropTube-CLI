@@ -212,8 +212,6 @@ pub struct ProfileManager {
     #[cfg(test)]
     fail_before_replace: std::sync::atomic::AtomicBool,
     #[cfg(test)]
-    fail_migration_step: std::sync::atomic::AtomicU8,
-    #[cfg(test)]
     transaction_finished: tokio::sync::Notify,
 }
 
@@ -264,8 +262,6 @@ impl ProfileManager {
             #[cfg(test)]
             fail_before_replace: std::sync::atomic::AtomicBool::new(false),
             #[cfg(test)]
-            fail_migration_step: std::sync::atomic::AtomicU8::new(0),
-            #[cfg(test)]
             transaction_finished: tokio::sync::Notify::new(),
         })
     }
@@ -280,7 +276,7 @@ impl ProfileManager {
         &self.library_root
     }
 
-    /// Read committed contributions, returning defaults only for missing storage.
+    /// Read committed split-file contributions, defaulting only missing domains.
     ///
     /// This never creates a profile directory or committed file.
     pub async fn read(&self, profile: &str) -> Result<UserMetadata, ProfileError> {
@@ -467,7 +463,6 @@ impl ProfileManager {
             let _guard = lock.lock().await;
             let result = async {
                 let mut metadata = manager.load(&profile).await?;
-                manager.migrate(&profile, &metadata).await?;
                 let domain = match &mutation {
                     Mutation::Rating(_) => Domain::Ratings,
                     Mutation::AddTag(_) | Mutation::RemoveTag(_) => Domain::Tags,
@@ -510,21 +505,13 @@ impl ProfileManager {
             return Ok(None);
         }
         let directory = self.profiles_root.join(profile);
-        let ratings = self.read_file(profile, "ratings.json").await?;
-        let tags = self.read_file(profile, "tags.json").await?;
-        let legacy = if ratings.is_none() || tags.is_none() {
-            self.read_file(profile, "metadata.json").await?
-        } else {
-            None
-        };
-        if ratings.is_none() && tags.is_none() && legacy.is_none() {
+        let ratings = self.read_domain(profile, Domain::Ratings).await?;
+        let tags = self.read_domain(profile, Domain::Tags).await?;
+        if ratings.is_none() && tags.is_none() {
             return Ok(None);
         }
         tokio::task::spawn_blocking(move || {
-            let mut metadata = match legacy {
-                Some(bytes) => decode_metadata(&bytes, &directory.join("metadata.json"))?,
-                None => UserMetadata::default(),
-            };
+            let mut metadata = UserMetadata::default();
             if let Some(bytes) = ratings {
                 let path = directory.join("ratings.json");
                 metadata.ratings = decode_object(&bytes, &path)?;
@@ -540,12 +527,12 @@ impl ProfileManager {
         .await?
     }
 
-    async fn read_file(
+    async fn read_domain(
         &self,
         profile: &str,
-        filename: &str,
+        domain: Domain,
     ) -> Result<Option<Vec<u8>>, ProfileError> {
-        let path = self.profiles_root.join(profile).join(filename);
+        let path = self.profiles_root.join(profile).join(domain.filename());
         if self.inspect_component(&path, false).await?.is_none() {
             self.inspect_storage(Some(profile)).await?;
             return Ok(None);
@@ -554,80 +541,6 @@ impl ProfileManager {
             .await
             .map(Some)
             .map_err(|source| persistence("read committed profile metadata", &path, source))
-    }
-
-    // Migration copies are individually committed, never rolled back. The live
-    // legacy file is retired only after both domains exist. A retry therefore
-    // resumes any interrupted phase using canonical precedence, under this lock.
-    async fn migrate(&self, profile: &str, metadata: &UserMetadata) -> Result<(), ProfileError> {
-        let Some(bytes) = self.read_file(profile, "metadata.json").await? else {
-            return Ok(());
-        };
-        let directory = self.profiles_root.join(profile);
-        let legacy = directory.join("metadata.json");
-        let validation_path = legacy.clone();
-        tokio::task::spawn_blocking(move || decode_metadata(&bytes, &validation_path)).await??;
-        for domain in [Domain::Ratings, Domain::Tags] {
-            if self
-                .inspect_component(&directory.join(domain.filename()), false)
-                .await?
-                .is_none()
-            {
-                // Only migration needs a copy of an unchanged domain. Ordinary
-                // edits move their loaded state through serialization and back.
-                let copy = match domain {
-                    Domain::Ratings => UserMetadata {
-                        ratings: metadata.ratings.clone(),
-                        tags: HashMap::new(),
-                    },
-                    Domain::Tags => UserMetadata {
-                        ratings: HashMap::new(),
-                        tags: metadata.tags.clone(),
-                    },
-                };
-                self.persist(profile, domain, copy).await?;
-            }
-            #[cfg(test)]
-            self.migration_checkpoint(match domain {
-                Domain::Ratings => 1,
-                Domain::Tags => 2,
-            })?;
-        }
-        #[cfg(test)]
-        self.migration_checkpoint(3)?;
-        // Reserve our own unique backup name with create_new before rename, so
-        // neither earlier backups nor their bytes can be replaced accidentally.
-        let (backup, reservation) =
-            create_unique(&directory, &self.next_temporary, "metadata.legacy", "json").await?;
-        drop(reservation);
-        if let Err(source) = fs::rename(&legacy, &backup).await {
-            if let Err(error) = fs::remove_file(&backup).await {
-                tracing::warn!(%error, "Could not remove unused legacy backup reservation");
-            }
-            return Err(persistence(
-                "archive legacy profile metadata",
-                &legacy,
-                source,
-            ));
-        }
-        #[cfg(test)]
-        self.migration_checkpoint(4)?;
-        Ok(())
-    }
-
-    #[cfg(test)]
-    fn migration_checkpoint(&self, step: u8) -> Result<(), ProfileError> {
-        if self.fail_migration_step.load(Ordering::Relaxed) == step {
-            return Err(persistence(
-                "migrate legacy metadata",
-                &self.profiles_root,
-                io::Error::new(
-                    io::ErrorKind::PermissionDenied,
-                    "injected migration failure",
-                ),
-            ));
-        }
-        Ok(())
     }
 
     async fn persist(
@@ -668,7 +581,7 @@ impl ProfileManager {
         })
         .await??;
         let (temporary, mut file) =
-            create_unique(&directory, &self.next_temporary, domain.filename(), "tmp").await?;
+            create_temporary(&directory, domain, &self.next_temporary).await?;
         let result = async {
             file.write_all(&bytes).await.map_err(|source| {
                 persistence("write temporary profile metadata", &temporary, source)
@@ -766,12 +679,6 @@ fn validate_profile(profile: &str) -> Result<String, ProfileError> {
     sanitize_profile_name(profile).ok_or(ProfileError::InvalidProfile)
 }
 
-fn decode_metadata(bytes: &[u8], path: &Path) -> Result<UserMetadata, ProfileError> {
-    let metadata = decode_object(bytes, path)?;
-    validate_metadata(&metadata, path)?;
-    Ok(metadata)
-}
-
 fn decode_object<T: serde::de::DeserializeOwned>(
     bytes: &[u8],
     path: &Path,
@@ -845,18 +752,18 @@ fn is_link(metadata: &Metadata) -> bool {
     }
 }
 
-async fn create_unique(
+async fn create_temporary(
     directory: &Path,
+    domain: Domain,
     next_temporary: &AtomicU64,
-    prefix: &str,
-    extension: &str,
 ) -> Result<(PathBuf, fs::File), ProfileError> {
     loop {
         // create_new remains authoritative if the counter wraps or stale files
         // from an earlier process happen to share a candidate name.
         let sequence = next_temporary.fetch_add(1, Ordering::Relaxed);
         let path = directory.join(format!(
-            "{prefix}.{}.{sequence}.{extension}",
+            "{}.{}.{sequence}.tmp",
+            domain.filename(),
             std::process::id()
         ));
         match OpenOptions::new()
@@ -978,8 +885,8 @@ mod tests {
                 .join("ratings.json")
         }
 
-        pub(super) async fn write_metadata(&self, profile: &str, bytes: &[u8]) {
-            let path = self.committed(profile).with_file_name("metadata.json");
+        pub(super) async fn write_domain(&self, profile: &str, domain: Domain, bytes: &[u8]) {
+            let path = self.committed(profile).with_file_name(domain.filename());
             fs::create_dir_all(path.parent().expect("metadata parent"))
                 .await
                 .expect("create profile directory");
@@ -1363,14 +1270,34 @@ mod tests {
         assert!(empty.profiles.is_empty());
         assert!(!library.0.join(".droptube").exists());
 
-        library.write_metadata("zeta", br#"{"ratings":{"film.mp4":4,"orphan.mp4":1},"tags":{"film.mp4":["a","shared"],"second.mp4":["shared"],"orphan.mp4":["hidden"]}}"#).await;
-        library.write_metadata("alice", br#"{"ratings":{"second.mp4":5},"tags":{"second.mp4":["other"],"untagged.mp4":[]}}"#).await;
-        library.write_metadata("empty", b"{}").await;
         library
-            .write_metadata(
-                "orphan",
-                br#"{"ratings":{"orphan.mp4":2},"tags":{"orphan.mp4":["hidden"]}}"#,
+            .write_domain("zeta", Domain::Ratings, br#"{"film.mp4":4,"orphan.mp4":1}"#)
+            .await;
+        library
+            .write_domain(
+                "zeta",
+                Domain::Tags,
+                br#"{"film.mp4":["a","shared"],"second.mp4":["shared"],"orphan.mp4":["hidden"]}"#,
             )
+            .await;
+        library
+            .write_domain("alice", Domain::Ratings, br#"{"second.mp4":5}"#)
+            .await;
+        library
+            .write_domain(
+                "alice",
+                Domain::Tags,
+                br#"{"second.mp4":["other"],"untagged.mp4":[]}"#,
+            )
+            .await;
+        library
+            .write_domain("empty", Domain::Ratings, br#"{}"#)
+            .await;
+        library
+            .write_domain("orphan", Domain::Ratings, br#"{"orphan.mp4":2}"#)
+            .await;
+        library
+            .write_domain("orphan", Domain::Tags, br#"{"orphan.mp4":["hidden"]}"#)
             .await;
         let pending_file = library.committed("pending");
         let pending_directory = pending_file.parent().expect("pending directory");
@@ -1704,10 +1631,10 @@ mod tests {
     async fn dropping_a_mutation_waiter_preserves_the_owned_transaction() {
         let library = Library::new().await;
         library
-            .write_metadata(
-                "alice",
-                br#"{"ratings":{"orphan.mp4":2},"tags":{"film.mp4":["keep"]}}"#,
-            )
+            .write_domain("alice", Domain::Ratings, br#"{"orphan.mp4":2}"#)
+            .await;
+        library
+            .write_domain("alice", Domain::Tags, br#"{"film.mp4":["keep"]}"#)
             .await;
         let manager = library.manager().await;
         let lock = manager.profile_lock("alice").await;
@@ -1744,87 +1671,110 @@ mod tests {
         let metadata = manager
             .read("alice")
             .await
-            .expect("detached migration completed");
+            .expect("detached save retained contributions");
         assert_eq!(metadata.ratings["orphan.mp4"].stars(), 2.0);
         assert!(metadata.tags["film.mp4"].contains("keep"));
-        assert!(
-            !library
-                .committed("alice")
-                .with_file_name("metadata.json")
-                .exists()
-        );
     }
 
     #[tokio::test]
-    async fn corrupt_and_invalid_committed_metadata_are_preserved_and_never_partially_aggregated() {
+    async fn corrupt_and_invalid_domains_are_preserved_and_never_partially_aggregated() {
         let library = Library::new().await;
         let manager = library.manager().await;
         manager
-            .set_rating("valid".to_owned(), "film.mp4".to_owned(), 5)
+            .set_rating("valid".into(), "film.mp4".into(), 5)
             .await
             .expect("good profile");
-        for bytes in [
+        let invalid_ratings = [
             b"{broken".as_slice(),
             b"[]",
             b"[{},{}]",
             b"null",
-            br#"{"ratings":[]}"#,
-            br#"{"ratings":{},"ratings":{}}"#,
-            br#"{"tags":{},"tags":{}}"#,
-            br#"{"ratings":null}"#,
-            br#"{"tags":null}"#,
-            br#"{"ratings":{"film.mp4":"5"}}"#,
-            br#"{"ratings":{"":5}}"#,
-            br#"{"tags":{"":["action"]}}"#,
-            br#"{"tags":{"film.mp4":"action"}}"#,
-            br#"{"tags":{"film.mp4":[1]}}"#,
-            br#"{"ratings":{"film.mp4":0}}"#,
-            br#"{"ratings":{"film.mp4":6}}"#,
-            br#"{"ratings":{"film.mp4":4.25}}"#,
-            br#"{"tags":{"film.mp4":[" Not Normalized "]}}"#,
-            br#"{"tags":{"film.mp4":["bad\nlabel"]}}"#,
-            br#"{"tags":[]}"#,
+            b"true",
+            b"5",
+            b"\"text\"",
+            br#"{"film.mp4":"5"}"#,
+            br#"{"":5}"#,
+            br#"{"film.mp4":0}"#,
+            br#"{"film.mp4":6}"#,
+            br#"{"film.mp4":4.25}"#,
+            br#"{"film.mp4":null}"#,
+            br#"{"film.mp4":true}"#,
+            br#"{"film.mp4":1e999}"#,
+            br#"{"ratings":{}}"#,
+        ];
+        let invalid_tags = [
+            b"{broken".as_slice(),
+            b"[]",
+            b"null",
+            br#"{"":[]}"#,
+            br#"{"film.mp4":"action"}"#,
+            br#"{"film.mp4":[1]}"#,
+            br#"{"film.mp4":[" Not Normalized "]}"#,
+            br#"{"film.mp4":["bad\nlabel"]}"#,
+            br#"{"film.mp4":null}"#,
+            br#"{"tags":{}}"#,
+        ];
+        for (domain, invalid) in [
+            (Domain::Ratings, invalid_ratings.as_slice()),
+            (Domain::Tags, invalid_tags.as_slice()),
         ] {
-            library.write_metadata("corrupt", bytes).await;
-            assert!(matches!(
-                manager.read("corrupt").await,
-                Err(ProfileError::Corrupt { .. })
-            ));
-            assert!(matches!(
-                manager
-                    .set_rating("corrupt".to_owned(), "film.mp4".to_owned(), 4)
-                    .await,
-                Err(ProfileError::Corrupt { .. })
-            ));
-            assert!(matches!(
-                manager.aggregate(&["film.mp4".to_owned()]).await,
-                Err(ProfileError::Corrupt { .. })
-            ));
-            assert!(matches!(
-                manager.library_metadata(&["film.mp4".to_owned()]).await,
-                Err(ProfileError::Corrupt { .. })
-            ));
-            assert_eq!(
-                fs::read(library.committed("corrupt").with_file_name("metadata.json"))
+            for bytes in invalid {
+                library
+                    .write_domain("corrupt", Domain::Ratings, b"{}")
+                    .await;
+                library.write_domain("corrupt", Domain::Tags, b"{}").await;
+                library.write_domain("corrupt", domain, bytes).await;
+                assert!(matches!(
+                    manager.read("corrupt").await,
+                    Err(ProfileError::Corrupt { .. })
+                ));
+                assert!(matches!(
+                    manager
+                        .set_rating("corrupt".into(), "film.mp4".into(), 4)
+                        .await,
+                    Err(ProfileError::Corrupt { .. })
+                ));
+                assert!(matches!(
+                    manager
+                        .add_tag("corrupt".into(), "film.mp4".into(), "new".into())
+                        .await,
+                    Err(ProfileError::Corrupt { .. })
+                ));
+                assert!(matches!(
+                    manager.aggregate(&["film.mp4".into()]).await,
+                    Err(ProfileError::Corrupt { .. })
+                ));
+                assert!(matches!(
+                    manager.library_metadata(&["film.mp4".into()]).await,
+                    Err(ProfileError::Corrupt { .. })
+                ));
+                assert_eq!(
+                    fs::read(
+                        library
+                            .committed("corrupt")
+                            .with_file_name(domain.filename())
+                    )
                     .await
                     .expect("preserved corruption"),
-                bytes
-            );
+                    *bytes
+                );
+            }
         }
         library
-            .write_metadata("corrupt", br#"{"ratings":{"orphan.mp4":3}}"#)
+            .write_domain("corrupt", Domain::Ratings, br#"{"orphan.mp4":3}"#)
             .await;
-        assert_eq!(
+        library.write_domain("corrupt", Domain::Tags, b"{}").await;
+        assert!(
             manager
                 .read("corrupt")
                 .await
-                .expect("missing tag field")
-                .tags,
-            HashMap::new()
+                .expect("empty tag map")
+                .tags
+                .is_empty()
         );
         assert_eq!(
             manager
-                .aggregate(&["film.mp4".to_owned()])
+                .aggregate(&["film.mp4".into()])
                 .await
                 .expect("ignore orphan contribution")["film.mp4"],
             AggregateRating {
@@ -1832,12 +1782,11 @@ mod tests {
                 count: 1
             }
         );
-        library.write_metadata("corrupt", br#"{}"#).await;
+        library
+            .write_domain("corrupt", Domain::Ratings, b"{}")
+            .await;
         assert_eq!(
-            manager
-                .read("corrupt")
-                .await
-                .expect("missing both map fields"),
+            manager.read("corrupt").await.expect("empty domains"),
             UserMetadata::default()
         );
     }
@@ -1931,7 +1880,7 @@ mod tests {
         fs::write(
             library
                 .0
-                .join(".droptube/profiles/invalid-name/metadata.json"),
+                .join(".droptube/profiles/invalid-name/ratings.json"),
             b"broken",
         )
         .await
@@ -1954,9 +1903,9 @@ mod tests {
 
     #[test]
     fn corrupt_metadata_diagnostics_do_not_quote_stored_values() {
-        let error = decode_metadata(
-            br#"{"ratings":{"film.mp4":"example-secret"}}"#,
-            Path::new("metadata.json"),
+        let error = decode_object::<HashMap<String, PersonalRating>>(
+            br#"{"film.mp4":"example-secret"}"#,
+            Path::new("ratings.json"),
         )
         .expect_err("wrong rating type");
         let diagnostic = error.to_string();

@@ -32,6 +32,10 @@ function validateProfileResponse(value) {
     if (object.profile !== profile) throw new Error('Profile response is not normalized.');
     return profile;
 }
+/** Validate exact star values without accepting strings, rounding, or coercion. */
+function isPersonalRating(value) {
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0.5 && value <= 5 && Number.isInteger(value * 2);
+}
 /** Return validated maps; inherited properties are never treated as metadata. */
 function validateMetadata(value) {
     const object = requireObject(value, 'Personal metadata');
@@ -41,7 +45,7 @@ function validateMetadata(value) {
     const result = { ratings: new Map(), tags: new Map() };
     for (const id of Object.keys(ratings)) {
         const rating = ratings[id];
-        if (id === '' || !Number.isInteger(rating) || rating < 1 || rating > 5) throw new Error('Personal rating is invalid.');
+        if (id === '' || !isPersonalRating(rating)) throw new Error('Personal rating is invalid.');
         result.ratings.set(id, rating);
     }
     for (const id of Object.keys(tags)) {
@@ -63,7 +67,7 @@ function validateAggregates(value) {
     for (const id of Object.keys(ratings)) {
         const rating = requireObject(ratings[id], 'Community rating');
         if (id === '' || !hasOwn(rating, 'average') || !hasOwn(rating, 'count') || !Number.isSafeInteger(rating.count) || rating.count < 0 ||
-            (rating.count === 0 ? rating.average !== null : typeof rating.average !== 'number' || !Number.isFinite(rating.average) || rating.average < 1 || rating.average > 5)) {
+            (rating.count === 0 ? rating.average !== null : typeof rating.average !== 'number' || !Number.isFinite(rating.average) || rating.average < 0.5 || rating.average > 5)) {
             throw new Error('Community rating average/count is invalid.');
         }
         result.set(id, { average: rating.average, count: rating.count });
@@ -231,7 +235,7 @@ function initializeProfiles(document, window, media) {
         const rating = document.getElementById('personal-rating'); const value = document.getElementById('personal-rating-value'); const tags = document.getElementById('personal-tags');
         if (typeof id !== 'string' || id === '' || rating === null || value === null || tags === null) throw new Error('The personal editor is missing required video controls.');
         const stars = [...rating.querySelectorAll('[data-rating-value]')];
-        if (stars.length !== 5 || stars.some((star, index) => star.dataset.ratingValue !== String(index + 1))) throw new Error('The personal editor is missing its five rating stars.');
+        if (stars.length !== 10 || stars.some((star, index) => star.dataset.ratingValue !== String((index + 1) / 2))) throw new Error('The personal editor is missing its ten half-star controls.');
         const selected = metadata.ratings.has(id) ? metadata.ratings.get(id) : null;
         rating.dataset.rating = selected === null ? '' : String(selected);
         value.textContent = selected === null ? 'Not rated' : selected + '/5';
@@ -368,7 +372,7 @@ function initializeProfiles(document, window, media) {
         const star = event.target.closest('[data-rating-value]');
         if (star !== null && page.contains(star)) {
             try {
-                if (!/^[1-5]$/.test(star.dataset.ratingValue)) throw new Error('Choose a personal rating from 1 to 5.');
+                if (!/^(?:[1-4](?:\.5)?|0\.5|5)$/.test(star.dataset.ratingValue)) throw new Error('Choose a personal rating from 0.5 to 5 in half-star steps.');
                 const editor = document.getElementById('watch-metadata');
                 const selected = Number(star.dataset.ratingValue);
                 if (editor !== null && metadata !== null && metadata.ratings.get(editor.dataset.videoId) === selected) return;

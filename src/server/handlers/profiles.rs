@@ -2,7 +2,9 @@
 //! rather than authenticating users; cookie edits carry a displayed-profile precondition.
 
 use crate::models::state::AppState;
-use crate::profiles::{ProfileError, ProfileManager, UserMetadata, sanitize_profile_name};
+use crate::profiles::{
+    PersonalRating, ProfileError, ProfileManager, UserMetadata, sanitize_profile_name,
+};
 use crate::server::handlers::TemplateError;
 use axum::Json;
 use axum::extract::{Form, FromRequest, FromRequestParts, OriginalUri, State};
@@ -103,7 +105,7 @@ impl From<ProfileError> for ApiError {
         match error {
             ProfileError::InvalidProfile => Self::bad_request("Invalid profile name"),
             ProfileError::InvalidRating => {
-                Self::bad_request("Rating must be an integer from 1 through 5")
+                Self::bad_request("Rating must be from 0.5 through 5 in half-star steps")
             }
             ProfileError::InvalidTag => Self::bad_request("Invalid tag label"),
             error => {
@@ -381,7 +383,7 @@ pub(crate) async fn get_metadata(
 #[derive(Deserialize)]
 pub(crate) struct RatingMutation {
     video_id: String,
-    rating: u8,
+    rating: PersonalRating,
     #[serde(default, deserialize_with = "deserialize_expected_profile")]
     expected_profile: Option<String>,
 }
@@ -492,7 +494,7 @@ pub(crate) async fn set_rating(
     check_video(&state, &payload.video_id).await?;
     let metadata = state
         .profiles
-        .set_rating(profile.clone(), payload.video_id, payload.rating)
+        .set_rating(profile.clone(), payload.video_id, payload.rating.stars())
         .await?;
     metadata_response(&profile, metadata)
 }
@@ -747,7 +749,7 @@ mod tests {
                     .expect("cookie context"),
                 ObjectJson(RatingMutation {
                     video_id: "film.mp4".to_owned(),
-                    rating: 4,
+                    rating: PersonalRating::new(4.0).expect("valid fixture rating"),
                     expected_profile: expected.map(str::to_owned),
                 }),
             )
@@ -762,7 +764,7 @@ mod tests {
             context(&fixture, headers).await.expect("header context"),
             ObjectJson(RatingMutation {
                 video_id: "film.mp4".to_owned(),
-                rating: 4,
+                rating: PersonalRating::new(4.0).expect("valid fixture rating"),
                 expected_profile: None,
             }),
         )
@@ -1022,7 +1024,7 @@ mod tests {
             selected,
             ObjectJson(RatingMutation {
                 video_id: "../film.mp4".to_owned(),
-                rating: 4,
+                rating: PersonalRating::new(4.0).expect("valid fixture rating"),
                 expected_profile: Some("alice".to_owned()),
             }),
         )
@@ -1035,7 +1037,7 @@ mod tests {
             .await
             .expect("corruption fixture");
         fs::write(
-            fixture.root.join(".droptube/profiles/alice/metadata.json"),
+            fixture.root.join(".droptube/profiles/alice/ratings.json"),
             b"invalid-json",
         )
         .await
@@ -1054,7 +1056,7 @@ mod tests {
             serde_json::json!({"error":"Profile metadata is unavailable"})
         );
         assert_eq!(
-            fs::read(fixture.root.join(".droptube/profiles/alice/metadata.json"))
+            fs::read(fixture.root.join(".droptube/profiles/alice/ratings.json"))
                 .await
                 .expect("preserved bytes"),
             b"invalid-json"
@@ -1150,7 +1152,7 @@ mod tests {
             r#"{"video_id":"film.mp4","rating":4,"rating":5}"#,
             r#"{"video_id":"film.mp4","rating":4,"expected_profile":"alice","expected_profile":"bob"}"#,
             r#"{"video_id":"film.mp4","rating":4,"expected_profile":null}"#,
-            r#"{"video_id":"film.mp4","rating":4.5}"#,
+            r#"{"video_id":"film.mp4","rating":4.25}"#,
             r#"{"video_id":"film.mp4","rating":-1}"#,
             r#"{"video_id":"film.mp4","rating":"4"}"#,
             "not-json",
