@@ -17,12 +17,56 @@ use tokio::fs::{self, OpenOptions};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 
-/// One profile's integer ratings and additive, normalized tag sets.
+/// An exact personal contribution, stored as half-star units and encoded as stars.
+///
+/// ```
+/// use droptube::profiles::PersonalRating;
+/// let rating = PersonalRating::new(4.5)?;
+/// assert_eq!(rating.stars(), 4.5);
+/// assert!(PersonalRating::new(4.25).is_err());
+/// # Ok::<(), droptube::profiles::ProfileError>(())
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PersonalRating(u8);
+
+impl PersonalRating {
+    /// Validate stars without rounding or clamping the input.
+    pub fn new(stars: f64) -> Result<Self, ProfileError> {
+        let units = stars * 2.0;
+        if !stars.is_finite() || !(1.0..=10.0).contains(&units) || units.fract() != 0.0 {
+            return Err(ProfileError::InvalidRating);
+        }
+        Ok(Self(units as u8))
+    }
+
+    /// Return the actual star value, never the internal half-unit count.
+    pub fn stars(self) -> f64 {
+        f64::from(self.0) / 2.0
+    }
+}
+
+impl Serialize for PersonalRating {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if self.0.is_multiple_of(2) {
+            serializer.serialize_u8(self.0 / 2)
+        } else {
+            serializer.serialize_f64(self.stars())
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for PersonalRating {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::new(f64::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    }
+}
+
+/// One profile's half-star ratings and additive, normalized tag sets.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(default)]
 pub struct UserMetadata {
     /// Each library-relative video identifier has at most one personal rating.
-    pub ratings: HashMap<String, u8>,
+    pub ratings: HashMap<String, PersonalRating>,
     /// Tags belong to this profile, never to the shared media index.
     pub tags: HashMap<String, HashSet<String>>,
 }
@@ -69,8 +113,8 @@ pub enum ProfileError {
     /// An identifier failed the complete profile-name whitelist.
     #[error("invalid profile name")]
     InvalidProfile,
-    /// Personal ratings must be integers between one and five.
-    #[error("rating must be an integer from 1 through 5")]
+    /// Personal ratings must be exact half-star steps between 0.5 and 5.
+    #[error("rating must be from 0.5 through 5 in half-star steps")]
     InvalidRating,
     /// Tag input failed normalization or the Unicode character limit.
     #[error("tag must be a nonempty label of at most 64 characters without controls")]
@@ -168,13 +212,30 @@ pub struct ProfileManager {
     #[cfg(test)]
     fail_before_replace: std::sync::atomic::AtomicBool,
     #[cfg(test)]
+    fail_migration_step: std::sync::atomic::AtomicU8,
+    #[cfg(test)]
     transaction_finished: tokio::sync::Notify,
 }
 
 enum Mutation {
-    Rating(u8),
+    Rating(PersonalRating),
     AddTag(String),
     RemoveTag(String),
+}
+
+#[derive(Clone, Copy)]
+enum Domain {
+    Ratings,
+    Tags,
+}
+
+impl Domain {
+    fn filename(self) -> &'static str {
+        match self {
+            Self::Ratings => "ratings.json",
+            Self::Tags => "tags.json",
+        }
+    }
 }
 
 impl ProfileManager {
@@ -202,6 +263,8 @@ impl ProfileManager {
             next_temporary: AtomicU64::new(0),
             #[cfg(test)]
             fail_before_replace: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(test)]
+            fail_migration_step: std::sync::atomic::AtomicU8::new(0),
             #[cfg(test)]
             transaction_finished: tokio::sync::Notify::new(),
         })
@@ -235,12 +298,10 @@ impl ProfileManager {
         self: &Arc<Self>,
         profile: String,
         video_id: String,
-        rating: u8,
+        rating: impl Into<f64>,
     ) -> Result<UserMetadata, ProfileError> {
         let profile = validate_profile(&profile)?;
-        if !(1..=5).contains(&rating) {
-            return Err(ProfileError::InvalidRating);
-        }
+        let rating = PersonalRating::new(rating.into())?;
         self.mutate(profile, video_id, Mutation::Rating(rating))
             .await
     }
@@ -406,6 +467,11 @@ impl ProfileManager {
             let _guard = lock.lock().await;
             let result = async {
                 let mut metadata = manager.load(&profile).await?;
+                manager.migrate(&profile, &metadata).await?;
+                let domain = match &mutation {
+                    Mutation::Rating(_) => Domain::Ratings,
+                    Mutation::AddTag(_) | Mutation::RemoveTag(_) => Domain::Tags,
+                };
                 match mutation {
                     Mutation::Rating(rating) => {
                         metadata.ratings.insert(video_id, rating);
@@ -422,7 +488,7 @@ impl ProfileManager {
                         }
                     }
                 }
-                manager.persist(&profile, metadata).await
+                manager.persist(&profile, domain, metadata).await
             }
             .await;
             if let Err(error) = &result {
@@ -443,29 +509,131 @@ impl ProfileManager {
         if self.inspect_storage(Some(profile)).await?.is_none() {
             return Ok(None);
         }
-        let path = self.profiles_root.join(profile).join("metadata.json");
-        let bytes = match fs::read(&path).await {
-            Ok(bytes) => bytes,
-            Err(source) if source.kind() == io::ErrorKind::NotFound => {
-                // Only a missing committed file is an empty profile. Recheck
-                // parents so a removed library or changed link is not concealed.
-                self.inspect_storage(Some(profile)).await?;
-                return Ok(None);
-            }
-            Err(source) => {
-                return Err(persistence(
-                    "read committed profile metadata",
-                    &path,
-                    source,
-                ));
-            }
+        let directory = self.profiles_root.join(profile);
+        let ratings = self.read_file(profile, "ratings.json").await?;
+        let tags = self.read_file(profile, "tags.json").await?;
+        let legacy = if ratings.is_none() || tags.is_none() {
+            self.read_file(profile, "metadata.json").await?
+        } else {
+            None
         };
-        tokio::task::spawn_blocking(move || decode_metadata(&bytes, &path).map(Some)).await?
+        if ratings.is_none() && tags.is_none() && legacy.is_none() {
+            return Ok(None);
+        }
+        tokio::task::spawn_blocking(move || {
+            let mut metadata = match legacy {
+                Some(bytes) => decode_metadata(&bytes, &directory.join("metadata.json"))?,
+                None => UserMetadata::default(),
+            };
+            if let Some(bytes) = ratings {
+                let path = directory.join("ratings.json");
+                metadata.ratings = decode_object(&bytes, &path)?;
+                validate_metadata(&metadata, &path)?;
+            }
+            if let Some(bytes) = tags {
+                let path = directory.join("tags.json");
+                metadata.tags = decode_object(&bytes, &path)?;
+                validate_metadata(&metadata, &path)?;
+            }
+            Ok(Some(metadata))
+        })
+        .await?
+    }
+
+    async fn read_file(
+        &self,
+        profile: &str,
+        filename: &str,
+    ) -> Result<Option<Vec<u8>>, ProfileError> {
+        let path = self.profiles_root.join(profile).join(filename);
+        if self.inspect_component(&path, false).await?.is_none() {
+            self.inspect_storage(Some(profile)).await?;
+            return Ok(None);
+        }
+        fs::read(&path)
+            .await
+            .map(Some)
+            .map_err(|source| persistence("read committed profile metadata", &path, source))
+    }
+
+    // Migration copies are individually committed, never rolled back. The live
+    // legacy file is retired only after both domains exist. A retry therefore
+    // resumes any interrupted phase using canonical precedence, under this lock.
+    async fn migrate(&self, profile: &str, metadata: &UserMetadata) -> Result<(), ProfileError> {
+        let Some(bytes) = self.read_file(profile, "metadata.json").await? else {
+            return Ok(());
+        };
+        let directory = self.profiles_root.join(profile);
+        let legacy = directory.join("metadata.json");
+        let validation_path = legacy.clone();
+        tokio::task::spawn_blocking(move || decode_metadata(&bytes, &validation_path)).await??;
+        for domain in [Domain::Ratings, Domain::Tags] {
+            if self
+                .inspect_component(&directory.join(domain.filename()), false)
+                .await?
+                .is_none()
+            {
+                // Only migration needs a copy of an unchanged domain. Ordinary
+                // edits move their loaded state through serialization and back.
+                let copy = match domain {
+                    Domain::Ratings => UserMetadata {
+                        ratings: metadata.ratings.clone(),
+                        tags: HashMap::new(),
+                    },
+                    Domain::Tags => UserMetadata {
+                        ratings: HashMap::new(),
+                        tags: metadata.tags.clone(),
+                    },
+                };
+                self.persist(profile, domain, copy).await?;
+            }
+            #[cfg(test)]
+            self.migration_checkpoint(match domain {
+                Domain::Ratings => 1,
+                Domain::Tags => 2,
+            })?;
+        }
+        #[cfg(test)]
+        self.migration_checkpoint(3)?;
+        // Reserve our own unique backup name with create_new before rename, so
+        // neither earlier backups nor their bytes can be replaced accidentally.
+        let (backup, reservation) =
+            create_unique(&directory, &self.next_temporary, "metadata.legacy", "json").await?;
+        drop(reservation);
+        if let Err(source) = fs::rename(&legacy, &backup).await {
+            if let Err(error) = fs::remove_file(&backup).await {
+                tracing::warn!(%error, "Could not remove unused legacy backup reservation");
+            }
+            return Err(persistence(
+                "archive legacy profile metadata",
+                &legacy,
+                source,
+            ));
+        }
+        #[cfg(test)]
+        self.migration_checkpoint(4)?;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn migration_checkpoint(&self, step: u8) -> Result<(), ProfileError> {
+        if self.fail_migration_step.load(Ordering::Relaxed) == step {
+            return Err(persistence(
+                "migrate legacy metadata",
+                &self.profiles_root,
+                io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "injected migration failure",
+                ),
+            ));
+        }
+        Ok(())
     }
 
     async fn persist(
         &self,
         profile: &str,
+        domain: Domain,
         metadata: UserMetadata,
     ) -> Result<UserMetadata, ProfileError> {
         self.inspect_storage(Some(profile)).await?;
@@ -484,12 +652,14 @@ impl ProfileManager {
             .await
             .map_err(|source| persistence("create profile directory", &directory, source))?;
         self.inspect_storage(Some(profile)).await?;
-        let committed = directory.join("metadata.json");
+        let committed = directory.join(domain.filename());
         let serialization_path = committed.clone();
-        // Move rather than clone the contribution maps while serialization runs
-        // off the async runtime, then return the same state after its commit.
         let (metadata, bytes) = tokio::task::spawn_blocking(move || {
-            serde_json::to_vec_pretty(&metadata)
+            let bytes = match domain {
+                Domain::Ratings => serde_json::to_vec_pretty(&metadata.ratings),
+                Domain::Tags => serde_json::to_vec_pretty(&metadata.tags),
+            };
+            bytes
                 .map(|bytes| (metadata, bytes))
                 .map_err(|error| ProfileError::Corrupt {
                     path: serialization_path,
@@ -497,7 +667,8 @@ impl ProfileManager {
                 })
         })
         .await??;
-        let (temporary, mut file) = create_temporary(&directory, &self.next_temporary).await?;
+        let (temporary, mut file) =
+            create_unique(&directory, &self.next_temporary, domain.filename(), "tmp").await?;
         let result = async {
             file.write_all(&bytes).await.map_err(|source| {
                 persistence("write temporary profile metadata", &temporary, source)
@@ -507,6 +678,7 @@ impl ProfileManager {
             })?;
             drop(file);
             self.inspect_storage(Some(profile)).await?;
+            self.inspect_component(&committed, false).await?;
             #[cfg(test)]
             if self.fail_before_replace.load(Ordering::Relaxed) {
                 return Err(persistence(
@@ -561,11 +733,7 @@ impl ProfileManager {
             return Ok(profiles);
         };
         let directory = self.profiles_root.join(profile);
-        if self.inspect_component(&directory, true).await?.is_none() {
-            return Ok(None);
-        }
-        self.inspect_component(&directory.join("metadata.json"), false)
-            .await
+        self.inspect_component(&directory, true).await
     }
 
     async fn inspect_component(
@@ -599,6 +767,15 @@ fn validate_profile(profile: &str) -> Result<String, ProfileError> {
 }
 
 fn decode_metadata(bytes: &[u8], path: &Path) -> Result<UserMetadata, ProfileError> {
+    let metadata = decode_object(bytes, path)?;
+    validate_metadata(&metadata, path)?;
+    Ok(metadata)
+}
+
+fn decode_object<T: serde::de::DeserializeOwned>(
+    bytes: &[u8],
+    path: &Path,
+) -> Result<T, ProfileError> {
     if bytes.iter().find(|byte| !byte.is_ascii_whitespace()) != Some(&b'{') {
         return Err(ProfileError::Corrupt {
             path: path.to_path_buf(),
@@ -609,7 +786,7 @@ fn decode_metadata(bytes: &[u8], path: &Path) -> Result<UserMetadata, ProfileErr
     // rather than silently overwritten while building an intermediate Value.
     // Serde data errors can quote stored values; diagnostics retain location and
     // category without copying personal metadata into logs.
-    let metadata = serde_json::from_slice(bytes).map_err(|error| ProfileError::Corrupt {
+    serde_json::from_slice(bytes).map_err(|error| ProfileError::Corrupt {
         path: path.to_path_buf(),
         detail: format!(
             "invalid JSON/schema at line {}, column {} ({:?})",
@@ -617,9 +794,7 @@ fn decode_metadata(bytes: &[u8], path: &Path) -> Result<UserMetadata, ProfileErr
             error.column(),
             error.classify()
         ),
-    })?;
-    validate_metadata(&metadata, path)?;
-    Ok(metadata)
+    })
 }
 
 fn validate_metadata(metadata: &UserMetadata, path: &Path) -> Result<(), ProfileError> {
@@ -632,16 +807,6 @@ fn validate_metadata(metadata: &UserMetadata, path: &Path) -> Result<(), Profile
         return Err(ProfileError::Corrupt {
             path: path.to_path_buf(),
             detail: "stored video identifier is empty".to_owned(),
-        });
-    }
-    if metadata
-        .ratings
-        .values()
-        .any(|rating| !(1..=5).contains(rating))
-    {
-        return Err(ProfileError::Corrupt {
-            path: path.to_path_buf(),
-            detail: "stored rating is outside 1 through 5".to_owned(),
         });
     }
     if metadata
@@ -680,15 +845,20 @@ fn is_link(metadata: &Metadata) -> bool {
     }
 }
 
-async fn create_temporary(
+async fn create_unique(
     directory: &Path,
     next_temporary: &AtomicU64,
+    prefix: &str,
+    extension: &str,
 ) -> Result<(PathBuf, fs::File), ProfileError> {
     loop {
         // create_new remains authoritative if the counter wraps or stale files
         // from an earlier process happen to share a candidate name.
         let sequence = next_temporary.fetch_add(1, Ordering::Relaxed);
-        let path = directory.join(format!(".metadata.{}.{sequence}.tmp", std::process::id()));
+        let path = directory.join(format!(
+            "{prefix}.{}.{sequence}.{extension}",
+            std::process::id()
+        ));
         match OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -708,10 +878,10 @@ async fn create_temporary(
     }
 }
 
-fn accumulate_rating(total: &mut (u64, u64), rating: u8) -> Result<(), ProfileError> {
+fn accumulate_rating(total: &mut (u64, u64), rating: PersonalRating) -> Result<(), ProfileError> {
     let sum = total
         .0
-        .checked_add(u64::from(rating))
+        .checked_add(u64::from(rating.0))
         .ok_or(ProfileError::AggregateOverflow)?;
     let count = total
         .1
@@ -725,7 +895,7 @@ fn finish_aggregate(totals: HashMap<String, (u64, u64)>) -> HashMap<String, Aggr
     totals
         .into_iter()
         .map(|(id, (sum, count))| {
-            let average = (count != 0).then(|| sum as f64 / count as f64);
+            let average = (count != 0).then(|| sum as f64 / count as f64 / 2.0);
             (id, AggregateRating { average, count })
         })
         .collect()
@@ -773,10 +943,10 @@ mod tests {
     use std::future::Future;
     use tokio::sync::{Barrier, oneshot};
 
-    struct Library(PathBuf);
+    pub(super) struct Library(pub(super) PathBuf);
 
     impl Library {
-        async fn new() -> Self {
+        pub(super) async fn new() -> Self {
             static NEXT_LIBRARY: AtomicU64 = AtomicU64::new(0);
             let directory = std::env::temp_dir().join(format!(
                 "droptube-profiles-{}-{}",
@@ -793,7 +963,7 @@ mod tests {
             )
         }
 
-        async fn manager(&self) -> Arc<ProfileManager> {
+        pub(super) async fn manager(&self) -> Arc<ProfileManager> {
             Arc::new(
                 ProfileManager::new(&self.0)
                     .await
@@ -801,15 +971,15 @@ mod tests {
             )
         }
 
-        fn committed(&self, profile: &str) -> PathBuf {
+        pub(super) fn committed(&self, profile: &str) -> PathBuf {
             self.0
                 .join(".droptube/profiles")
                 .join(profile)
-                .join("metadata.json")
+                .join("ratings.json")
         }
 
-        async fn write_metadata(&self, profile: &str, bytes: &[u8]) {
-            let path = self.committed(profile);
+        pub(super) async fn write_metadata(&self, profile: &str, bytes: &[u8]) {
+            let path = self.committed(profile).with_file_name("metadata.json");
             fs::create_dir_all(path.parent().expect("metadata parent"))
                 .await
                 .expect("create profile directory");
@@ -1009,11 +1179,11 @@ mod tests {
             .set_rating("Alice".to_owned(), "movies/film.mkv".to_owned(), 4)
             .await
             .expect("first rating");
-        assert_eq!(initial.ratings["movies/film.mkv"], 4);
+        assert_eq!(initial.ratings["movies/film.mkv"].stars(), 4.0);
         let first_bytes = fs::read(library.committed("alice"))
             .await
             .expect("first committed file");
-        assert!(first_bytes.starts_with(b"{\n  \"ratings\": {"));
+        assert!(first_bytes.starts_with(b"{\n  \"movies/film.mkv\": 4"));
         manager
             .add_tag(
                 "alice".to_owned(),
@@ -1026,13 +1196,11 @@ mod tests {
             .set_rating("alice".to_owned(), "movies/film.mkv".to_owned(), 2)
             .await
             .expect("replace existing committed file");
-        let committed: UserMetadata = serde_json::from_slice(
-            &fs::read(library.committed("alice"))
-                .await
-                .expect("read replaced file"),
-        )
-        .expect("complete JSON");
-        assert_eq!(committed.ratings["movies/film.mkv"], 2);
+        let committed = manager
+            .read("alice")
+            .await
+            .expect("complete combined metadata");
+        assert_eq!(committed.ratings["movies/film.mkv"].stars(), 2.0);
         assert_eq!(
             committed.tags["movies/film.mkv"],
             HashSet::from(["favorites".to_owned()])
@@ -1045,7 +1213,14 @@ mod tests {
         while let Some(entry) = entries.next_entry().await.expect("next entry") {
             names.push(entry.file_name());
         }
-        assert_eq!(names, [std::ffi::OsString::from("metadata.json")]);
+        names.sort();
+        assert_eq!(
+            names,
+            [
+                std::ffi::OsString::from("ratings.json"),
+                std::ffi::OsString::from("tags.json")
+            ]
+        );
     }
 
     #[tokio::test]
@@ -1094,7 +1269,7 @@ mod tests {
             .await
             .expect("remove last label");
         assert!(!empty_tags.tags.contains_key("film.mp4"));
-        assert_eq!(empty_tags.ratings["film.mp4"], 5);
+        assert_eq!(empty_tags.ratings["film.mp4"].stars(), 5.0);
     }
 
     #[tokio::test]
@@ -1359,8 +1534,8 @@ mod tests {
             .await
             .expect("p1 tag");
         assert_eq!(
-            manager.read("p2").await.expect("p2 personal").ratings[&ids[0]],
-            5
+            manager.read("p2").await.expect("p2 personal").ratings[&ids[0]].stars(),
+            5.0
         );
         assert!(
             manager
@@ -1462,13 +1637,20 @@ mod tests {
             .expect("complete personal state");
         assert_eq!(metadata.ratings.len(), 12);
         assert_eq!(metadata.tags["common.mp4"].len(), 12);
-        let serialized: UserMetadata = serde_json::from_slice(
+        let ratings: HashMap<String, PersonalRating> = serde_json::from_slice(
             &fs::read(library.committed("alice"))
                 .await
                 .expect("committed bytes"),
         )
         .expect("committed valid JSON");
-        assert_eq!(metadata, serialized);
+        assert_eq!(metadata.ratings, ratings);
+        let tags: HashMap<String, HashSet<String>> = serde_json::from_slice(
+            &fs::read(library.committed("alice").with_file_name("tags.json"))
+                .await
+                .expect("committed tags"),
+        )
+        .expect("committed valid tags JSON");
+        assert_eq!(metadata.tags, tags);
     }
 
     #[tokio::test]
@@ -1513,14 +1695,20 @@ mod tests {
             .await
             .expect("independent profile save");
         assert_eq!(
-            manager.read("bob").await.expect("independent read").ratings["film.mp4"],
-            5
+            manager.read("bob").await.expect("independent read").ratings["film.mp4"].stars(),
+            5.0
         );
     }
 
     #[tokio::test]
     async fn dropping_a_mutation_waiter_preserves_the_owned_transaction() {
         let library = Library::new().await;
+        library
+            .write_metadata(
+                "alice",
+                br#"{"ratings":{"orphan.mp4":2},"tags":{"film.mp4":["keep"]}}"#,
+            )
+            .await;
         let manager = library.manager().await;
         let lock = manager.profile_lock("alice").await;
         let guard = lock.lock().await;
@@ -1549,8 +1737,21 @@ mod tests {
                 .read("alice")
                 .await
                 .expect("detached save completed")
-                .ratings["film.mp4"],
-            4
+                .ratings["film.mp4"]
+                .stars(),
+            4.0
+        );
+        let metadata = manager
+            .read("alice")
+            .await
+            .expect("detached migration completed");
+        assert_eq!(metadata.ratings["orphan.mp4"].stars(), 2.0);
+        assert!(metadata.tags["film.mp4"].contains("keep"));
+        assert!(
+            !library
+                .committed("alice")
+                .with_file_name("metadata.json")
+                .exists()
         );
     }
 
@@ -1579,7 +1780,7 @@ mod tests {
             br#"{"tags":{"film.mp4":[1]}}"#,
             br#"{"ratings":{"film.mp4":0}}"#,
             br#"{"ratings":{"film.mp4":6}}"#,
-            br#"{"ratings":{"film.mp4":4.5}}"#,
+            br#"{"ratings":{"film.mp4":4.25}}"#,
             br#"{"tags":{"film.mp4":[" Not Normalized "]}}"#,
             br#"{"tags":{"film.mp4":["bad\nlabel"]}}"#,
             br#"{"tags":[]}"#,
@@ -1604,7 +1805,7 @@ mod tests {
                 Err(ProfileError::Corrupt { .. })
             ));
             assert_eq!(
-                fs::read(library.committed("corrupt"))
+                fs::read(library.committed("corrupt").with_file_name("metadata.json"))
                     .await
                     .expect("preserved corruption"),
                 bytes
@@ -1690,7 +1891,7 @@ mod tests {
                 .expect("first entry")
                 .expect("metadata exists")
                 .file_name(),
-            "metadata.json"
+            "ratings.json"
         );
         assert!(entries.next_entry().await.expect("next entry").is_none());
     }
@@ -1736,7 +1937,7 @@ mod tests {
         .await
         .expect("unrelated file");
         assert!(manager.aggregate(&[]).await.is_ok());
-        let collision = directory.join(format!(".metadata.{}.0.tmp", std::process::id()));
+        let collision = directory.join(format!("ratings.json.{}.0.tmp", std::process::id()));
         fs::write(&collision, b"old operation")
             .await
             .expect("temporary name collision");
@@ -1744,7 +1945,7 @@ mod tests {
             .set_rating("alice".to_owned(), "film.mp4".to_owned(), 4)
             .await
             .expect("save past stale temporary name");
-        assert_eq!(saved.ratings["film.mp4"], 4);
+        assert_eq!(saved.ratings["film.mp4"].stars(), 4.0);
         assert_eq!(
             fs::read(&collision).await.expect("old temporary preserved"),
             b"old operation"
@@ -1780,8 +1981,9 @@ mod tests {
                 .read("alice")
                 .await
                 .expect("normalized read")
-                .ratings["film.mp4"],
-            4
+                .ratings["film.mp4"]
+                .stars(),
+            4.0
         );
         assert_eq!(
             manager
@@ -1845,13 +2047,19 @@ mod tests {
         assert!(matches!(error, ProfileError::Task(_)));
         let mut sum_overflow = (u64::MAX, 1);
         assert!(matches!(
-            accumulate_rating(&mut sum_overflow, 1),
+            accumulate_rating(
+                &mut sum_overflow,
+                PersonalRating::new(0.5).expect("valid rating")
+            ),
             Err(ProfileError::AggregateOverflow)
         ));
         assert_eq!(sum_overflow, (u64::MAX, 1));
         let mut count_overflow = (0, u64::MAX);
         assert!(matches!(
-            accumulate_rating(&mut count_overflow, 1),
+            accumulate_rating(
+                &mut count_overflow,
+                PersonalRating::new(0.5).expect("valid rating")
+            ),
             Err(ProfileError::AggregateOverflow)
         ));
         assert_eq!(count_overflow, (0, u64::MAX));
@@ -2000,3 +2208,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "profiles_storage_tests.rs"]
+mod storage_tests;
