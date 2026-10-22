@@ -359,13 +359,15 @@ fn detail_line<'a>(label: &'a str, value: &'a str) -> Line<'a> {
 }
 
 fn render_logs(frame: &mut ratatui::Frame<'_>, log_state: &TuiWidgetState, area: Rect) {
+    //todo this looks kinda mid. and theres no way to search by date
     let widget = TuiLoggerWidget::default()
         .block(Block::default().title(" Logs ").borders(Borders::ALL))
-        .output_timestamp(Some("%H:%M:%S".to_owned()))
+        .output_timestamp(Some("%Y/%m/%d %T".to_owned()))
         .output_level(Some(TuiLoggerLevelOutput::Long))
         .output_target(true)
         .output_file(false)
         .output_line(false)
+        .output_separator(' ')
         .style_error(Style::default().fg(Color::Red))
         .style_warn(Style::default().fg(Color::Yellow))
         .style_info(Style::default().fg(Color::Cyan))
