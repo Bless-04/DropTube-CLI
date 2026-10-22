@@ -140,6 +140,116 @@ fn response_json(response: &str) -> serde_json::Value {
 }
 
 #[tokio::test]
+async fn half_star_http_contract_rejects_invalid_edits_and_preserves_domain_bytes() {
+    let server = ServerFixture::start().await;
+    server.create_file("movies/movie.mp4", b"video");
+    assert_eq!(server.request("POST", "/refresh").await.0, 200);
+    let directory = server.root.join(".droptube/profiles/p1");
+    let headers = [
+        ("Content-Type", "application/json"),
+        ("X-Droptube-Profile", "p1"),
+    ];
+    let (status, response) = server
+        .send(TestRequest {
+            method: "GET",
+            path: "/api/user/metadata",
+            headers: &headers,
+            body: "",
+        })
+        .await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        response_json(&response),
+        serde_json::json!({"ratings":{},"tags":{}})
+    );
+    assert!(!directory.join("ratings.json").exists());
+    for rating in [
+        "0", "-1", "0.25", "4.2", "4.25", "5.5", "\"4.5\"", "null", "true", "NaN", "1e999",
+    ] {
+        let body = format!(r#"{{"video_id":"movies/movie.mp4","rating":{rating}}}"#);
+        let (status, response) = server
+            .send(TestRequest {
+                method: "POST",
+                path: "/api/user/rating",
+                headers: &headers,
+                body: &body,
+            })
+            .await;
+        assert_eq!(status, 400, "{rating}: {response}");
+        assert!(response_json(&response)["error"].is_string());
+        assert!(!directory.exists());
+        assert!(!directory.join("ratings.json").exists());
+    }
+    server.create_file(
+        ".droptube/profiles/p1/tags.json",
+        br#"{"movies/movie.mp4":["shared"]}"#,
+    );
+    let tags_before = fs::read(directory.join("tags.json")).expect("prior tags");
+    for (profile, rating) in [("p1", 3.5), ("p2", 4.5), ("p1", 4.0)] {
+        let body = serde_json::json!({"video_id":"movies/movie.mp4","rating":rating}).to_string();
+        let headers = [
+            ("Content-Type", "application/json"),
+            ("X-Droptube-Profile", profile),
+        ];
+        let (status, response) = server
+            .send(TestRequest {
+                method: "POST",
+                path: "/api/user/rating",
+                headers: &headers,
+                body: &body,
+            })
+            .await;
+        assert_eq!(status, 200, "{response}");
+        assert!(
+            response
+                .to_ascii_lowercase()
+                .contains(&format!("x-droptube-profile: {profile}"))
+        );
+        assert_eq!(
+            response_json(&response)["ratings"]["movies/movie.mp4"].as_f64(),
+            Some(rating)
+        );
+        assert!(response_json(&response)["tags"].is_object());
+    }
+    assert_eq!(fs::read_dir(&directory).expect("profile files").count(), 2);
+    let (_, response) = server.request("GET", "/api/videos/ratings").await;
+    assert_eq!(
+        response_json(&response)["ratings"]["movies/movie.mp4"],
+        serde_json::json!({"average":4.25,"count":2})
+    );
+    let (_, html) = server.request("GET", "/?v=movies/movie.mp4").await;
+    assert!(html.contains("4.3/5 · 2 ratings"));
+    let p2 = server.root.join(".droptube/profiles/p2/ratings.json");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&fs::read(&p2).expect("p2 file"))
+            .expect("JSON")["movies/movie.mp4"],
+        4.5
+    );
+    assert!(!p2.with_file_name("tags.json").exists());
+    for units in 1..=10 {
+        let stars = f64::from(units) / 2.0;
+        let body = serde_json::json!({"video_id":"movies/movie.mp4","rating":stars}).to_string();
+        let (status, response) = server
+            .send(TestRequest {
+                method: "POST",
+                path: "/api/user/rating",
+                headers: &headers,
+                body: &body,
+            })
+            .await;
+        assert_eq!(status, 200, "{response}");
+        assert_eq!(
+            response_json(&response)["ratings"]["movies/movie.mp4"].as_f64(),
+            Some(stars)
+        );
+        assert_eq!(
+            fs::read(directory.join("tags.json")).expect("unchanged tags"),
+            tags_before
+        );
+    }
+}
+
+#[tokio::test]
 async fn profiles_keep_personal_data_isolated_and_replace_community_contributions() {
     let server = ServerFixture::start().await;
     server.create_file("movies/interstellar.mkv", b"video");
@@ -181,12 +291,12 @@ async fn profiles_keep_personal_data_isolated_and_replace_community_contribution
         let persisted = fs::read(
             server
                 .root
-                .join(format!(".droptube/profiles/{profile}/metadata.json")),
+                .join(format!(".droptube/profiles/{profile}/ratings.json")),
         )
         .expect("committed profile JSON");
         let persisted: serde_json::Value =
             serde_json::from_slice(&persisted).expect("complete persisted JSON");
-        assert_eq!(persisted["ratings"]["movies/interstellar.mkv"], rating);
+        assert_eq!(persisted["movies/interstellar.mkv"], rating);
     }
     let (_, response) = server.request("GET", "/api/videos/ratings").await;
     assert_eq!(
@@ -311,17 +421,15 @@ async fn browsing_unions_committed_tags_across_profiles_without_changing_edit_ow
         .map(|id| (id.clone(), serde_json::json!(["favorites"])))
         .collect();
     server.create_file(
-        ".droptube/profiles/p1/metadata.json",
-        serde_json::json!({"ratings":{},"tags":first_tags})
-            .to_string()
-            .as_bytes(),
+        ".droptube/profiles/p1/tags.json",
+        serde_json::json!(first_tags).to_string().as_bytes(),
     );
     server.create_file(
-        ".droptube/profiles/p2/metadata.json",
-        serde_json::json!({"ratings":{},"tags":{
+        ".droptube/profiles/p2/tags.json",
+        serde_json::json!({
             "video00.mp4":["favorites","<script>shared</script>"],
             "video30.mp4":["late"]
-        }})
+        })
         .to_string()
         .as_bytes(),
     );
@@ -387,7 +495,7 @@ async fn browsing_unions_committed_tags_across_profiles_without_changing_edit_ow
             .len(),
         2
     );
-    server.create_file(".droptube/profiles/p2/metadata.json", b"{broken");
+    server.create_file(".droptube/profiles/p2/tags.json", b"{broken");
     let (_, unavailable) = server
         .send(TestRequest {
             method: "GET",
@@ -459,19 +567,27 @@ async fn cookie_selection_and_stale_tab_preconditions_do_not_retarget_edits() {
 #[tokio::test]
 async fn protected_profile_routes_block_committed_and_temporary_data_without_blocking_media() {
     let server = ServerFixture::start().await;
-    server.create_file(
-        ".droptube/profiles/alice/metadata.json",
-        br#"{"ratings":{},"tags":{}}"#,
-    );
     server.create_file(".droptube/profiles/alice/save.tmp", b"private");
+    for filename in [
+        "ratings.json",
+        "tags.json",
+        "notes.json",
+        "ratings.json.123.tmp",
+    ] {
+        server.create_file(&format!(".droptube/profiles/alice/{filename}"), b"private");
+    }
     server.create_file(".droptube/thumbnails/movie.mp4.jpg", b"thumbnail");
     server.create_file("movie.mp4", b"media");
     for route in [
-        "/video/.droptube/profiles/alice/metadata.json",
         "/video/%2Edroptube%2Fprofiles%2Falice%2Fsave.tmp",
-        "/video/.DROPTUBE/PROFILES/alice/metadata.json",
+        "/video/.DROPTUBE/PROFILES/alice/ratings.json",
+        "/video/.droptube/profiles/alice/ratings.json",
+        "/video/%2Edroptube%2Fprofiles%2Falice%2Ftags.json",
+        "/video/.DROPTUBE./PROFILES /alice/ratings.json",
+        "/video/.droptube/profiles/alice/notes.json",
+        "/video/.droptube/profiles/alice/ratings.json.123.tmp",
         "/explorer/.droptube/profiles/alice",
-        "/explorer/%2Edroptube%2Fprofiles%2Falice%2Fmetadata.json",
+        "/explorer/%2Edroptube%2Fprofiles%2Falice%2Fratings.json",
     ] {
         let (status, response) = server.request("GET", route).await;
         assert!(
