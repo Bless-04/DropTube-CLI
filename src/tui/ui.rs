@@ -1,4 +1,4 @@
-//! Terminal dashboard layout and component rendering.
+﻿//! Terminal dashboard layout and component rendering.
 
 use super::profiles::ProfilesStatus;
 use super::runtime::ViewState;
@@ -10,7 +10,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table, Wrap};
 use std::path::PathBuf;
-use tui_logger::{TuiLoggerLevelOutput, TuiLoggerWidget, TuiWidgetState};
+use tui_logger::{ExtLogRecord, LogFormatter, TuiLoggerWidget, TuiWidgetState};
 
 const MENU_WIDTH: u16 = 18;
 const MIN_DASHBOARD_WIDTH: u16 = 70;
@@ -358,16 +358,116 @@ fn detail_line<'a>(label: &'a str, value: &'a str) -> Line<'a> {
     ])
 }
 
+/// Fixed-width column layout for log records.
+///
+/// Each line renders as:
+/// HH:MM:SS | LEVEL | target-name    | message text
+///
+/// The target column is capped at [LOG_TARGET_WIDTH] characters and the
+/// remaining width is given to the message, which wraps onto continuation
+/// lines indented to align with the message column.
+struct ColumnarLogFormatter;
+
+/// Maximum characters reserved for the log target in the table column.
+const LOG_TARGET_WIDTH: usize = 26;
+
+/// Characters before the message column: time(8) + sep(3) + level(5) + sep(3) + target(26) + sep(3).
+const LOG_PREFIX_WIDTH: usize = 8 + 3 + 5 + 3 + LOG_TARGET_WIDTH + 3;
+
+impl LogFormatter for ColumnarLogFormatter {
+    fn min_width(&self) -> u16 {
+        (LOG_PREFIX_WIDTH + 8) as u16
+    }
+
+    fn format(&self, width: usize, evt: &ExtLogRecord) -> Vec<Line<'_>> {
+        let (level_str, level_color) = match evt.level {
+            log::Level::Error => ("ERROR", Color::Red),
+            log::Level::Warn  => ("WARN ", Color::Yellow),
+            log::Level::Info  => ("INFO ", Color::Cyan),
+            log::Level::Debug => ("DEBUG", Color::Blue),
+            log::Level::Trace => ("TRACE", Color::DarkGray),
+        };
+        let meta_style  = Style::default().fg(Color::DarkGray);
+        let level_style = Style::default().fg(level_color).add_modifier(Modifier::BOLD);
+        let sep_style   = Style::default().fg(Color::DarkGray);
+        let msg_style   = Style::default().fg(level_color);
+        let timestamp   = evt.timestamp.strftime("%H:%M:%S").to_string();
+
+        // Pad or truncate target to exactly LOG_TARGET_WIDTH chars.
+        let raw_target = evt.target();
+        let target: String = if raw_target.chars().count() > LOG_TARGET_WIDTH {
+            // Keep the rightmost characters, prefix with ellipsis.
+            let skip = raw_target.chars().count() - (LOG_TARGET_WIDTH - 1);
+            let mut chars = raw_target.chars();
+            for _ in 0..skip {
+                chars.next();
+            }
+            format!("{}{}", '\u{2026}', chars.as_str())
+        } else {
+            format!("{:<width$}", raw_target, width = LOG_TARGET_WIDTH)
+        };
+
+        let sep = Span::styled(" \u{2502} ", sep_style);
+        let msg_col_width = width.saturating_sub(LOG_PREFIX_WIDTH);
+
+        let mut lines: Vec<Line> = Vec::new();
+        let mut first = true;
+        for source_line in evt.msg().lines() {
+            let chars: Vec<char> = source_line.chars().collect();
+            let mut pos = 0usize;
+            loop {
+                let chunk_end = (pos + msg_col_width.max(1)).min(chars.len());
+                let chunk: String = chars[pos..chunk_end].iter().collect();
+                if first {
+                    first = false;
+                    lines.push(Line::from(vec![
+                        Span::styled(timestamp.clone(), meta_style),
+                        sep.clone(),
+                        Span::styled(level_str, level_style),
+                        sep.clone(),
+                        Span::styled(target.clone(), meta_style),
+                        sep.clone(),
+                        Span::styled(chunk, msg_style),
+                    ]));
+                } else {
+                    let indent = " ".repeat(LOG_PREFIX_WIDTH);
+                    lines.push(Line::from(vec![
+                        Span::styled(indent, meta_style),
+                        Span::styled(chunk, msg_style),
+                    ]));
+                }
+                pos = chunk_end;
+                if pos >= chars.len() {
+                    break;
+                }
+            }
+        }
+
+        if lines.is_empty() {
+            // Guard against an empty message string.
+            lines.push(Line::from(vec![
+                Span::styled(timestamp, meta_style),
+                sep.clone(),
+                Span::styled(level_str, level_style),
+                sep.clone(),
+                Span::styled(target, meta_style),
+                sep,
+            ]));
+        }
+
+        lines
+    }
+}
+
 fn render_logs(frame: &mut ratatui::Frame<'_>, log_state: &TuiWidgetState, area: Rect) {
-    //todo this looks kinda mid. and theres no way to search by date
     let widget = TuiLoggerWidget::default()
-        .block(Block::default().title(" Logs ").borders(Borders::ALL))
-        .output_timestamp(Some("%Y/%m/%d %T".to_owned()))
-        .output_level(Some(TuiLoggerLevelOutput::Long))
-        .output_target(true)
-        .output_file(false)
-        .output_line(false)
-        .output_separator(' ')
+        .block(
+            Block::default()
+                .title(" Logs  (time \u{2502} level \u{2502} target \u{2502} message) ")
+                .title_style(Style::default().fg(Color::DarkGray))
+                .borders(Borders::ALL),
+        )
+        .formatter(Box::new(ColumnarLogFormatter))
         .style_error(Style::default().fg(Color::Red))
         .style_warn(Style::default().fg(Color::Yellow))
         .style_info(Style::default().fg(Color::Cyan))
