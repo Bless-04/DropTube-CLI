@@ -181,12 +181,17 @@ with a platform discriminator (Unix path bytes or Windows UTF-16 little-endian u
 restarts. Separate library roots have separate selections; tabs and ports serving the same library on
 the same host share the selection.
 
-On a watch page, choose a star under **Your rating** to save an integer rating from 1 to 5 for that
-profile immediately; no separate save button is needed. Cards and the watch view separately show
+On a watch page, choose the left or right half of a star under **Your rating** to save a rating from
+0.5 to 5 in half-star steps immediately. Each of the ten values is a labelled native button,
+accessible by touch or Tab and Enter/Space; no separate save button is needed. Cards and the watch view
+separately show
 the community average and contribution count. For example, `p1=4` and
 `p2=5` produce **4.5/5 · 2 ratings**. Changing p1 to 2 gives **3.5/5 · 2 ratings**: rerating replaces
 one contribution, and repeating a rating never adds a vote. Unrated profiles do not count. Videos with
 no contributions show **Unrated**; unreadable community metadata shows **Rating unavailable**.
+Half-star contributions are exact: `p1=3.5` and `p2=4.5` give **4.0/5 · 2 ratings**.
+Rerating p1 to 4 gives the unrounded average `4.25`, displayed as **4.3/5 · 2 ratings**.
+Community averages retain full precision and are displayed to one decimal place.
 
 Use **Add tag** to create a label or reuse a suggestion. Tags accumulate. **All tags**, video cards,
 suggestions, tag-aware search, and filters combine labels contributed by every profile, including
@@ -201,11 +206,24 @@ work through normal forms; personal editing requires JavaScript.
 
 ### Storage and API usage
 
-Saved data lives at `<served_library_root>/.droptube/profiles/<profile>/metadata.json`, including for
-videos in subfolders. Choosing a profile or reading missing metadata creates no files. The first saved
-edit creates an indented JSON file. Each video's ID is its exact library-relative path, with forward
-slashes and its extension. Profile files and temporary save files cannot be downloaded through media
-or explorer routes. Existing thumbnail caches keep their original layout.
+Saved contributions live under the served library root, including for videos in subfolders:
+
+```text
+<served_library_root>/.droptube/profiles/<profile>/ratings.json
+<served_library_root>/.droptube/profiles/<profile>/tags.json
+```
+
+Each file is an indented JSON object mapping exact library-relative video IDs (forward slashes,
+including extensions) to that domain's values. For example, `ratings.json` contains
+`{"movies/movie.mp4": 4.5}` and `tags.json` contains `{"movies/movie.mp4": ["favorites"]}`.
+The first rating edit creates only `ratings.json`; the first tag edit creates only `tags.json`.
+A missing domain is empty. Selecting a profile, reading metadata, aggregating, and refreshing the
+read-only TUI create no files. Normal edits replace only their affected file. The metadata API
+continues returning the combined `{"ratings": {}, "tags": {}}` shape.
+
+Malformed or unreadable contribution files report an error and remain intact. Empty domain files
+contain `{}`. The entire profiles subtree, including temporary save files, is blocked from media
+and explorer downloads. Existing thumbnail caches keep their original layout.
 
 Start DropTube with `droptube --port 18081 --depth 255 /path/to/library`, where the library contains
 `movies/movie.mp4`. These commands were verified against an indexed video at that path; the save
@@ -215,13 +233,14 @@ assigns p1's personal rating and returns its complete metadata:
 curl -X POST http://localhost:18081/api/user/rating \
   -H "Content-Type: application/json" \
   -H "X-Droptube-Profile: p1" \
-  --data '{"video_id":"movies/movie.mp4","rating":4}'
+  --data '{"video_id":"movies/movie.mp4","rating":4.5}'
 
 curl http://localhost:18081/api/user/metadata -H "X-Droptube-Profile: p1"
 curl http://localhost:18081/api/videos/ratings
 ```
 
-The save creates `.droptube/profiles/p1/metadata.json` under that library root. Unknown indexed IDs
+The save creates `.droptube/profiles/p1/ratings.json` under that library root, storing `4.5`
+as stars. A normal rating edit leaves `tags.json` unchanged. Unknown indexed IDs
 return 404; invalid names such as `X-Droptube-Profile: ../../etc` return 400 without creating profile
 files. Explicit-header clients may omit `expected_profile`; browser edits use the cookie and must
 include the profile whose metadata was displayed, receiving 409 if the selection has changed.
@@ -229,8 +248,8 @@ The public aggregate endpoint exposes averages/counts only, without profile name
 
 Each profile's updates are serialized and committed using a synced same-directory temporary file
 followed by replacement, preserving prior committed data on failed writes. Corrupt data is reported
-and preserved rather than overwritten. This guarantees complete committed JSON, not unconditional
-power-loss durability. Multiple server processes concurrently writing the same library are unsupported.
+and preserved rather than overwritten. Each domain replacement guarantees complete committed JSON,
+not unconditional power-loss durability. Multiple server processes concurrently writing the same library are unsupported.
 Use a trusted local library: containment checks reject existing links, but cannot protect against a
 hostile local process racing filesystem replacements. Moving or renaming a video can leave orphaned
 metadata; automatic remapping and importing old filename metadata are unsupported.
