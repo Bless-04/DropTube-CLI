@@ -1,4 +1,4 @@
-﻿//! Terminal dashboard layout and component rendering.
+//! Terminal dashboard layout and component rendering.
 
 use super::profiles::ProfilesStatus;
 use super::runtime::ViewState;
@@ -382,16 +382,18 @@ impl LogFormatter for ColumnarLogFormatter {
     fn format(&self, width: usize, evt: &ExtLogRecord) -> Vec<Line<'_>> {
         let (level_str, level_color) = match evt.level {
             log::Level::Error => ("ERROR", Color::Red),
-            log::Level::Warn  => ("WARN ", Color::Yellow),
-            log::Level::Info  => ("INFO ", Color::Cyan),
+            log::Level::Warn => ("WARN ", Color::Yellow),
+            log::Level::Info => ("INFO ", Color::Cyan),
             log::Level::Debug => ("DEBUG", Color::Blue),
             log::Level::Trace => ("TRACE", Color::DarkGray),
         };
-        let meta_style  = Style::default().fg(Color::DarkGray);
-        let level_style = Style::default().fg(level_color).add_modifier(Modifier::BOLD);
-        let sep_style   = Style::default().fg(Color::DarkGray);
-        let msg_style   = Style::default().fg(level_color);
-        let timestamp   = evt.timestamp.strftime("%H:%M:%S").to_string();
+        let meta_style = Style::default().fg(Color::DarkGray);
+        let level_style = Style::default()
+            .fg(level_color)
+            .add_modifier(Modifier::BOLD);
+        let sep_style = Style::default().fg(Color::DarkGray);
+        let msg_style = Style::default().fg(level_color);
+        let timestamp = evt.timestamp.strftime("%H:%M:%S").to_string();
 
         // Pad or truncate target to exactly LOG_TARGET_WIDTH chars.
         let raw_target = evt.target();
