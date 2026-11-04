@@ -169,6 +169,7 @@ mod tests {
                     unix_timestamp: 0,
                     format: VideoFormat::Mp4,
                     thumbnail_path: None,
+                    subtitles: Vec::new(),
                 }])),
                 thumbnails: None,
                 scan_lock: Arc::new(Mutex::new(())),
