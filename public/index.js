@@ -114,6 +114,70 @@ function getRelativeTime(timestamp) {
 }
 
 /** Initialize one document. State and resource ownership stay inside their feature closures. */
+function convertSrtToVtt(text) {
+    if (typeof text !== 'string') throw new Error('SRT content must be a string.');
+    let srt = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    if (srt.trim() !== '' && !/\d{1,2}:\d{2}:\d{2}[,.]\d{3}\s*-->\s*\d{1,2}:\d{2}:\d{2}[,.]\d{3}/.test(srt)) {
+        throw new Error('SRT content is malformed: no valid subtitle timing cues found.');
+    }
+    srt = srt.replace(/(\d{1,2}:\d{2}:\d{2}),(\d{3})\s*-->\s*(\d{1,2}:\d{2}:\d{2}),(\d{3})/g, (_match, startHms, startMs, endHms, endMs) => {
+        const padStart = startHms.length === 7 ? '0' + startHms : startHms;
+        const padEnd = endHms.length === 7 ? '0' + endHms : endHms;
+        return padStart + '.' + startMs + ' --> ' + padEnd + '.' + endMs;
+    });
+    return 'WEBVTT\n\n' + srt;
+}
+
+async function loadSrtTrack(track, src, window, blobUrls) {
+    try {
+        const response = await fetch(src, { credentials: 'same-origin' });
+        if (!response.ok) {
+            throw new Error('HTTP ' + response.status + ' ' + response.statusText);
+        }
+        const text = await response.text();
+        const vttText = convertSrtToVtt(text);
+        if (typeof window.Blob === 'function' && typeof window.URL === 'object' && typeof window.URL.createObjectURL === 'function') {
+            const blob = new window.Blob([vttText], { type: 'text/vtt' });
+            const blobUrl = window.URL.createObjectURL(blob);
+            blobUrls.add(blobUrl);
+            track.src = blobUrl;
+        }
+    } catch (error) {
+        console.error('Failed to load or convert SRT subtitle from ' + src + ':', error);
+    }
+}
+
+function setupSubtitles(video, window) {
+    if (video === null || typeof video.querySelectorAll !== 'function') return;
+    const tracks = video.querySelectorAll('track');
+    if (tracks.length === 0) return;
+    const blobUrls = new Set();
+    function revokeBlobUrls() {
+        for (const url of blobUrls) {
+            try {
+                if (typeof window.URL === 'object' && typeof window.URL.revokeObjectURL === 'function') {
+                    window.URL.revokeObjectURL(url);
+                }
+            } catch (_) {}
+        }
+        blobUrls.clear();
+    }
+    if (typeof window.addEventListener === 'function') {
+        window.addEventListener('pagehide', revokeBlobUrls, { once: true });
+    }
+    tracks.forEach(track => {
+        if (typeof track.addEventListener === 'function') {
+            track.addEventListener('error', event => {
+                console.error('Subtitle track failed to load from ' + (track.src || track.getAttribute('src')) + ':', event);
+            });
+        }
+        const src = track.getAttribute('src') || track.src;
+        if (typeof src === 'string' && /\.srt(?:\?|#|$)/i.test(src)) {
+            loadSrtTrack(track, src, window, blobUrls);
+        }
+    });
+}
+
 function initializePage(document, window) {
     if (document.documentElement !== undefined) {
         if (document.documentElement.dataset.droptubeInitialized === 'true') return;
@@ -172,6 +236,8 @@ function initializePage(document, window) {
             });
         }
     }
+    const videoPlayer = document.getElementById('video-player');
+    if (videoPlayer !== null) setupSubtitles(videoPlayer, window);
     initializeProfiles(document, window, { enhanceMedia, releaseRegion(root) { if (observer !== null) root.querySelectorAll('img').forEach(image => observer.unobserve(image)); } });
 }
 
@@ -394,4 +460,4 @@ function initializeProfiles(document, window, media) {
     void reconcile(false);
 }
 
-initializePage(document, window);
+if (typeof document !== 'undefined' && typeof window !== 'undefined') initializePage(document, window);

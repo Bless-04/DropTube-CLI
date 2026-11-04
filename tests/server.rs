@@ -702,3 +702,78 @@ async fn server_handles_missing_files_with_not_found() {
         "GET /explorer/<missing_folder> should return 404 Not Found for non-existent directory"
     );
 }
+
+#[tokio::test]
+async fn server_serves_subtitles_and_injects_track_tags() {
+    let server = ServerFixture::start().await;
+
+    server.create_file("movies/clip.mp4", b"video-content");
+    server.create_file(
+        "movies/clip.vtt",
+        b"WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello",
+    );
+    server.create_file(
+        "movies/clip.en.vtt",
+        b"WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHi",
+    );
+    server.create_file(
+        "movies/clip.es.srt",
+        b"1\r\n00:00:01,000 --> 00:00:02,000\r\nHola\r\n",
+    );
+
+    // Refresh library so scanner indexes the files
+    let (status, _) = server.request("POST", "/refresh").await;
+    assert_eq!(status, 200, "POST /refresh should index new files");
+
+    // Watch view for clip.mp4 should contain injected track tags
+    let (status, html) = server.request("GET", "/?v=movies/clip.mp4").await;
+    assert_eq!(status, 200, "GET /?v=movies/clip.mp4 should return 200 OK");
+    assert!(
+        html.contains(r#"kind="subtitles""#)
+            && html.contains(r#"srclang="en""#)
+            && html.contains(r#"label="English""#)
+            && html.contains("default"),
+        "Watch view should inject English track with default"
+    );
+    assert!(
+        html.contains(r#"srclang="es""#) && html.contains(r#"label="Spanish""#),
+        "Watch view should inject Spanish SRT track"
+    );
+    assert!(
+        html.contains(r#"label="Subtitles""#),
+        "Watch view should inject standard VTT track"
+    );
+
+    // Subtitle files should be served with correct content-types via /video/
+    let (status, vtt_res) = server.request("GET", "/video/movies/clip.vtt").await;
+    assert_eq!(
+        status, 200,
+        "GET /video/movies/clip.vtt should return 200 OK"
+    );
+    assert!(
+        vtt_res
+            .to_ascii_lowercase()
+            .contains("content-type: text/vtt"),
+        "VTT subtitle should be served with text/vtt MIME type: {vtt_res}"
+    );
+
+    let (status, srt_res) = server.request("GET", "/video/movies/clip.es.srt").await;
+    assert_eq!(
+        status, 200,
+        "GET /video/movies/clip.es.srt should return 200 OK"
+    );
+    assert!(
+        srt_res.to_ascii_lowercase().contains("content-type:"),
+        "SRT subtitle should have a Content-Type header: {srt_res}"
+    );
+
+    // Path traversal to protected .droptube should return forbidden
+    server.create_file(".droptube/profiles/test/secret.vtt", b"WEBVTT\nsecret");
+    let (status, _) = server
+        .request("GET", "/video/.droptube/profiles/test/secret.vtt")
+        .await;
+    assert_eq!(
+        status, 403,
+        "Protected profile directory should block direct subtitle file downloads"
+    );
+}

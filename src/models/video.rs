@@ -46,6 +46,50 @@ impl VideoFormat {
     }
 }
 
+/// Supported subtitle formats.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubtitleFormat {
+    /// WebVTT format (.vtt).
+    Vtt,
+    /// SubRip format (.srt).
+    Srt,
+}
+
+impl SubtitleFormat {
+    /// Supported file extensions for subtitles.
+    pub const SUPPORTED_EXTS: &'static [&'static str] = &["vtt", "srt"];
+
+    /// Returns the `SubtitleFormat` for the given file extension, or `None` if unsupported.
+    pub fn from_ext(ext: &str) -> Option<Self> {
+        match ext.to_lowercase().as_str() {
+            "vtt" => Some(Self::Vtt),
+            "srt" => Some(Self::Srt),
+            _ => None,
+        }
+    }
+
+    /// Returns the canonical extension string for this format.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Vtt => "vtt",
+            Self::Srt => "srt",
+        }
+    }
+}
+
+/// Represents a discovered sidecar subtitle track associated with a video.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubtitleTrack {
+    /// Relative path from library root, using forward slashes.
+    pub relative_path: String,
+    /// Subtitle format (.vtt or .srt).
+    pub format: SubtitleFormat,
+    /// Optional language code extracted from `<stem>.<lang>.<ext>`.
+    pub language: Option<String>,
+    /// Display label for the track.
+    pub label: String,
+}
+
 /// A video file discovered during directory scanning.
 #[derive(Debug, Clone)]
 pub struct VideoFile {
@@ -61,4 +105,6 @@ pub struct VideoFile {
     pub format: VideoFormat,
     /// Relative path to a sidecar thumbnail image, if found.
     pub thumbnail_path: Option<String>,
+    /// Discovered sidecar subtitle tracks.
+    pub subtitles: Vec<SubtitleTrack>,
 }

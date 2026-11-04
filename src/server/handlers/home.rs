@@ -37,6 +37,13 @@ struct HomeTemplate {
     metadata_available: bool,
     library_metadata_available: bool,
 }
+struct SubtitleTrackView {
+    src: String,
+    label: String,
+    srclang: Option<String>,
+    default: bool,
+}
+
 struct TagLink {
     label: String,
     url: String,
@@ -57,6 +64,7 @@ struct VideoCard {
     personal_rating: f64,
     is_playing: bool,
     is_mkv: bool,
+    subtitles: Vec<SubtitleTrackView>,
 }
 struct PageData<'a> {
     videos: &'a [VideoFile],
@@ -136,6 +144,17 @@ impl VideoCard {
                 .unwrap_or(0.0),
             is_playing: query.v.as_deref() == Some(video.file_name.as_str()),
             is_mkv: video.format == VideoFormat::Mkv,
+            subtitles: video
+                .subtitles
+                .iter()
+                .enumerate()
+                .map(|(index, sub)| SubtitleTrackView {
+                    src: media_url(&sub.relative_path),
+                    label: sub.label.clone(),
+                    srclang: sub.language.clone(),
+                    default: index == 0,
+                })
+                .collect(),
         }
     }
 }
@@ -354,6 +373,7 @@ mod tests {
             unix_timestamp: 1,
             format: VideoFormat::Mp4,
             thumbnail_path: Some("courses/a & b.jpg".to_owned()),
+            subtitles: Vec::new(),
         }
     }
     fn query(search: &str) -> HomeQuery {

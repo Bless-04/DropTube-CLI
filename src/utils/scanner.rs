@@ -1,5 +1,5 @@
 use crate::config::constants::DROPTUBE_DIRECTORY;
-use crate::models::video::{VideoFile, VideoFormat};
+use crate::models::video::{SubtitleFormat, SubtitleTrack, VideoFile, VideoFormat};
 use log::warn;
 use std::fs;
 use std::path::{Path as StdPath, PathBuf};
@@ -70,6 +70,91 @@ impl ScanDirectoryParams {
     }
 }
 
+/// Maps an optional subtitle language code to a user-facing label.
+fn subtitle_language_label(lang: &str) -> String {
+    match lang.to_lowercase().as_str() {
+        "en" | "eng" => "English".to_string(),
+        "en-us" => "English (US)".to_string(),
+        "en-gb" => "English (UK)".to_string(),
+        "es" | "spa" => "Spanish".to_string(),
+        "fr" | "fra" | "fre" => "French".to_string(),
+        "de" | "deu" | "ger" => "German".to_string(),
+        "it" | "ita" => "Italian".to_string(),
+        "pt" | "por" => "Portuguese".to_string(),
+        "pt-br" => "Portuguese (BR)".to_string(),
+        "ja" | "jpn" => "Japanese".to_string(),
+        "zh" | "zho" | "chi" => "Chinese".to_string(),
+        "ko" | "kor" => "Korean".to_string(),
+        "ru" | "rus" => "Russian".to_string(),
+        "ar" | "ara" => "Arabic".to_string(),
+        "hi" | "hin" => "Hindi".to_string(),
+        _ => lang.to_string(),
+    }
+}
+
+/// Discovers sidecar subtitle files (.vtt or .srt) matching a video file in the same directory.
+fn discover_subtitles(
+    candidates: &[PathBuf],
+    video_stem: &str,
+    base_dir: &StdPath,
+) -> Vec<SubtitleTrack> {
+    if video_stem.is_empty() {
+        return Vec::new();
+    }
+    let prefix = format!("{video_stem}.");
+    let mut tracks = Vec::new();
+
+    for candidate in candidates {
+        let Some(ext) = candidate.extension().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let Some(format) = SubtitleFormat::from_ext(ext) else {
+            continue;
+        };
+        let Some(cand_stem) = candidate.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+
+        let (language, label) = if cand_stem == video_stem {
+            (None, "Subtitles".to_string())
+        } else if cand_stem.starts_with(&prefix) {
+            let lang = &cand_stem[prefix.len()..];
+            if lang.is_empty() {
+                continue;
+            }
+            (Some(lang.to_string()), subtitle_language_label(lang))
+        } else {
+            continue;
+        };
+
+        match fs::metadata(candidate) {
+            Ok(_) => {
+                let rel_path = candidate
+                    .strip_prefix(base_dir)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| candidate.to_string_lossy().to_string())
+                    .replace('\\', "/");
+                tracks.push(SubtitleTrack {
+                    relative_path: rel_path,
+                    format,
+                    language,
+                    label,
+                });
+            }
+            Err(err) => {
+                warn!(
+                    "Failed to retrieve metadata for subtitle sidecar '{}': {}",
+                    candidate.display(),
+                    err
+                );
+            }
+        }
+    }
+
+    tracks.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    tracks
+}
+
 /// Recursively (or non-recursively, depending on `params.max_depth`) scans
 /// `params.current_dir` for supported video files.
 ///
@@ -89,6 +174,9 @@ pub fn scan_directory(params: &mut ScanDirectoryParams) {
             return;
         }
     };
+
+    let mut sub_dirs = Vec::new();
+    let mut dir_files = Vec::new();
 
     for entry in entries {
         let entry = match entry {
@@ -111,80 +199,92 @@ pub fn scan_directory(params: &mut ScanDirectoryParams) {
         }
 
         if e_path.is_dir() {
-            if params.should_recurse() {
-                let mut sub_params = ScanDirectoryParams {
-                    current_dir: e_path,
-                    base_dir: base_dir.clone(),
-                    max_depth: params.max_depth,
-                    current_depth: params.current_depth.saturating_add(1),
-                    count: 0,
-                    videos: Vec::new(),
-                };
-                scan_directory(&mut sub_params);
-                params.count = params.count.saturating_add(sub_params.count);
-                params.videos.extend(sub_params.videos);
-            }
+            sub_dirs.push(e_path);
         } else if e_path.is_file() {
-            params.count = params.count.saturating_add(1);
+            dir_files.push(e_path);
+        }
+    }
 
-            let Some(ext) = e_path.extension().and_then(|s| s.to_str()) else {
-                continue;
+    if params.should_recurse() {
+        for sub_dir in sub_dirs {
+            let mut sub_params = ScanDirectoryParams {
+                current_dir: sub_dir,
+                base_dir: base_dir.clone(),
+                max_depth: params.max_depth,
+                current_depth: params.current_depth.saturating_add(1),
+                count: 0,
+                videos: Vec::new(),
             };
-            let Some(format) = VideoFormat::from_ext(ext) else {
-                continue;
-            };
+            scan_directory(&mut sub_params);
+            params.count = params.count.saturating_add(sub_params.count);
+            params.videos.extend(sub_params.videos);
+        }
+    }
 
-            // Compute web-friendly relative path from base_dir for the streaming URL
-            let file_name = e_path
-                .strip_prefix(base_dir)
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|_| e_path.to_string_lossy().to_string())
-                .replace('\\', "/");
+    for e_path in &dir_files {
+        params.count = params.count.saturating_add(1);
 
-            let video_info = parse_video_info(&e_path);
+        let Some(ext) = e_path.extension().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let Some(format) = VideoFormat::from_ext(ext) else {
+            continue;
+        };
 
-            // Look for a sidecar thumbnail (e.g. `video.jpg` alongside `video.mp4`)
-            let mut thumbnail_path = None;
-            for img_ext in &ScanDirectoryParams::THUMBNAIL_EXT {
-                let mut test_thumb = e_path.clone();
-                test_thumb.set_extension(img_ext);
-                if test_thumb.exists() && test_thumb.is_file() {
-                    let rel_thumb = test_thumb
-                        .strip_prefix(base_dir)
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_else(|_| test_thumb.to_string_lossy().to_string())
-                        .replace('\\', "/");
-                    thumbnail_path = Some(rel_thumb);
-                    break;
-                }
+        // Compute web-friendly relative path from base_dir for the streaming URL
+        let file_name = e_path
+            .strip_prefix(base_dir)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| e_path.to_string_lossy().to_string())
+            .replace('\\', "/");
+
+        let video_info = parse_video_info(e_path);
+
+        // Look for a sidecar thumbnail (e.g. `video.jpg` alongside `video.mp4`)
+        let mut thumbnail_path = None;
+        for img_ext in &ScanDirectoryParams::THUMBNAIL_EXT {
+            let mut test_thumb = e_path.clone();
+            test_thumb.set_extension(img_ext);
+            if test_thumb.exists() && test_thumb.is_file() {
+                let rel_thumb = test_thumb
+                    .strip_prefix(base_dir)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| test_thumb.to_string_lossy().to_string())
+                    .replace('\\', "/");
+                thumbnail_path = Some(rel_thumb);
+                break;
             }
+        }
 
-            match fs::metadata(&e_path) {
-                Ok(metadata) => {
-                    let file_size_mb = metadata.len() / (1024 * 1024);
-                    let unix_timestamp = metadata
-                        .modified()
-                        .ok()
-                        .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
-                        .map(|d| d.as_secs())
-                        .unwrap_or(0);
+        let video_stem = e_path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        let subtitles = discover_subtitles(&dir_files, video_stem, base_dir);
 
-                    params.videos.push(VideoFile {
-                        file_name,
-                        display_name: video_info.display_name,
-                        file_size_mb,
-                        unix_timestamp,
-                        format,
-                        thumbnail_path,
-                    });
-                }
-                Err(err) => {
-                    warn!(
-                        "Failed to retrieve metadata for '{}': {}",
-                        e_path.display(),
-                        err
-                    );
-                }
+        match fs::metadata(e_path) {
+            Ok(metadata) => {
+                let file_size_mb = metadata.len() / (1024 * 1024);
+                let unix_timestamp = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+
+                params.videos.push(VideoFile {
+                    file_name,
+                    display_name: video_info.display_name,
+                    file_size_mb,
+                    unix_timestamp,
+                    format,
+                    thumbnail_path,
+                    subtitles,
+                });
+            }
+            Err(err) => {
+                warn!(
+                    "Failed to retrieve metadata for '{}': {}",
+                    e_path.display(),
+                    err
+                );
             }
         }
     }
@@ -502,5 +602,77 @@ mod tests {
             video.file_name, "tutorials/rust/[5] [rust,tech] Advanced_Patterns.2024.mp4",
             "Scanned file_name should match the expected relative path with forward slashes"
         );
+    }
+
+    #[test]
+    fn scan_directory_pairs_sidecar_subtitles() {
+        let fixture = TestDir::new("scan-subtitles");
+        fixture.create_file("movies/interstellar.mp4", b"video");
+        fixture.create_file("movies/interstellar.vtt", b"WEBVTT");
+        fixture.create_file("movies/interstellar.en.vtt", b"WEBVTT-en");
+        fixture.create_file(
+            "movies/interstellar.es.srt",
+            b"1\n00:00:01,000 --> 00:00:02,000\nHola",
+        );
+        fixture.create_file("movies/interstellar.de-DE.vtt", b"WEBVTT-de");
+        fixture.create_file("movies/interstellar-trailer.vtt", b"trailer");
+        fixture.create_file("movies/other.mkv", b"video2");
+        fixture.create_file(
+            "movies/other.srt",
+            b"1\n00:00:01,000 --> 00:00:02,000\nOther",
+        );
+
+        let mut params = ScanDirectoryParams::new(fixture.0.clone(), 255);
+        scan_directory(&mut params);
+
+        let interstellar = params
+            .videos
+            .iter()
+            .find(|v| v.file_name == "movies/interstellar.mp4")
+            .expect("interstellar.mp4 exists");
+
+        assert_eq!(interstellar.subtitles.len(), 4);
+        assert_eq!(
+            interstellar.subtitles[0].relative_path,
+            "movies/interstellar.de-DE.vtt"
+        );
+        assert_eq!(interstellar.subtitles[0].format, SubtitleFormat::Vtt);
+        assert_eq!(interstellar.subtitles[0].language.as_deref(), Some("de-DE"));
+        assert_eq!(interstellar.subtitles[0].label, "de-DE");
+
+        assert_eq!(
+            interstellar.subtitles[1].relative_path,
+            "movies/interstellar.en.vtt"
+        );
+        assert_eq!(interstellar.subtitles[1].format, SubtitleFormat::Vtt);
+        assert_eq!(interstellar.subtitles[1].language.as_deref(), Some("en"));
+        assert_eq!(interstellar.subtitles[1].label, "English");
+
+        assert_eq!(
+            interstellar.subtitles[2].relative_path,
+            "movies/interstellar.es.srt"
+        );
+        assert_eq!(interstellar.subtitles[2].format, SubtitleFormat::Srt);
+        assert_eq!(interstellar.subtitles[2].language.as_deref(), Some("es"));
+        assert_eq!(interstellar.subtitles[2].label, "Spanish");
+
+        assert_eq!(
+            interstellar.subtitles[3].relative_path,
+            "movies/interstellar.vtt"
+        );
+        assert_eq!(interstellar.subtitles[3].format, SubtitleFormat::Vtt);
+        assert_eq!(interstellar.subtitles[3].language, None);
+        assert_eq!(interstellar.subtitles[3].label, "Subtitles");
+
+        let other = params
+            .videos
+            .iter()
+            .find(|v| v.file_name == "movies/other.mkv")
+            .expect("other.mkv exists");
+        assert_eq!(other.subtitles.len(), 1);
+        assert_eq!(other.subtitles[0].relative_path, "movies/other.srt");
+        assert_eq!(other.subtitles[0].format, SubtitleFormat::Srt);
+        assert_eq!(other.subtitles[0].language, None);
+        assert_eq!(other.subtitles[0].label, "Subtitles");
     }
 }

@@ -15,7 +15,8 @@
     {% when Some with (video) %}
     <div class="watch-layout">
         <section class="watch-main" aria-label="Video player">
-            <div class="player-container"><video id="video-player" src="{{ video.media_url }}" {% if let Some(poster) = video.thumbnail_url %}poster="{{ poster }}"{% endif %} controls autoplay playsinline preload="metadata"></video></div>
+            <div class="player-container"><video id="video-player" src="{{ video.media_url }}" {% if let Some(poster) = video.thumbnail_url %}poster="{{ poster }}"{% endif %} controls autoplay playsinline preload="metadata">{% for sub in video.subtitles %}
+                <track src="{{ sub.src }}" kind="subtitles"{% if let Some(srclang) = sub.srclang %} srclang="{{ srclang }}"{% endif %} label="{{ sub.label }}"{% if sub.default %} default{% endif %}>{% endfor %}</video></div>
             <h1 class="watch-title">{{ video.title }}</h1>
             <div class="watch-actions"><div class="library-identity"><span class="local-avatar">L</span><div><strong>Local library</strong><span>{{ video.format }} · {{ video.size }}</span></div></div><a href="{{ video.media_url }}" download class="button"><svg class="icon"><use href="#icon-download"/></svg>Download</a></div>
             <div id="watch-metadata" data-video-id="{{ video.video_id }}" class="video-description">
